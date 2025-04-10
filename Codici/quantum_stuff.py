@@ -10,6 +10,7 @@ from scipy.integrate import solve_ivp
 from scipy.linalg import sqrtm
 from itertools import combinations
 from scipy.special import comb
+import sklearn.linear_model as LM
 
 hbar = 1
 m = 1
@@ -127,6 +128,11 @@ def haar_random_unitary(N):
     Q, R = qr(Z)
     Q = Q @ np.diag(np.exp(1j * np.angle(np.diag(R))))
     return Q
+
+def Holevo_Info(states: np.ndarray):
+    #Compute the Holevo information for a QRC system
+    η = np.mean(states, axis = 0) #average state over the ensemble available by Alice
+    return von_neumann_entropy(η) - np.mean(von_neumann_entropy(states), axis = 0)
 
 def interaction(op: list, J: np.ndarray):
     N = J.shape[0]
@@ -327,12 +333,34 @@ def random_gaussian_state(size: int):
     initial_state = np.random.multivariate_normal(mean_xp, cov_matrix)
     return initial_state, cov_matrix
 
-def random_qubit(N: int, dm=False):
-    state = zero(N=N)  # Start with |00...0⟩ state
-    state = haar_random_unitary(2**N) @ state  # Apply Haar-random unitary
-    if dm:
-        return np.outer(state, state.conj())  # Return density matrix
-    return state
+def random_qubit(N: int, pure: bool = True, dm: bool = False) -> np.ndarray:
+    d = 2**N
+    
+    if pure:
+        real_part = np.random.normal(size=d)
+        imag_part = np.random.normal(size=d)
+        state = real_part + 1j * imag_part
+        state = state / np.linalg.norm(state)
+        
+        if dm:
+            return np.outer(state, state.conj())
+        else:
+            return state
+    else:
+        eigenvalues = np.random.random(d)
+        eigenvalues = eigenvalues / np.sum(eigenvalues)
+        
+        if dm:
+            density_matrix = np.zeros((d, d), dtype=complex)
+            np.fill_diagonal(density_matrix, eigenvalues)
+            
+            u = np.random.normal(size=(d, d)) + 1j * np.random.normal(size=(d, d))
+            u, _ = np.linalg.qr(u)
+            
+            density_matrix = u @ density_matrix @ u.conj().T
+            return density_matrix
+        else:
+            return eigenvalues
 
 def right(dm = False, N: int = 1):
     r = (1/np.sqrt(2))*(zero()+1j*one())
@@ -364,6 +392,45 @@ def sigmaz():
     sz = np.array([[1,0],[0,-1]], dtype = complex)
     return sz
 
+def STM(sk:np.ndarray, H: list, δt: float, τ: int = 17, wo: int = 1000, tqo: list = []):
+    #This function tests the short term memory of the reservoir
+    print('Initilizing...')
+    #Variables
+    sx = sigmax()
+    sy = sigmay()
+    sz = sigmaz()
+    Nq = int(np.log2(np.shape(H[0])[0]))
+    ensemble = len(H)
+    train_size = int((len(sk) - wo)/2)
+    test_size = train_size
+    dim = wo + train_size + test_size
+    if len(tqo) == 0:
+        tqo = [np.kron(sx, sx), np.kron(sy,sy), np.kron(sz, sz)]
+
+    #Reservoir random initialization and input encoding
+    ρ_res = random_qubit(Nq-1, dm = True)
+    ρ = FNencoding(sk, basis = 'z', dm = True)
+
+    #Evolution and Measurements
+    print('Evolving...')
+    tstep = 1
+    outputs = np.array([collisions(ρ, ρ_res, H[i], δt, tstep)[wo:] for i in tqdm(range(ensemble))])
+    x = np.array([np.hstack((local_measurements(outputs[i][:train_size]), two_qubits_measurements(outputs[i][:train_size], tqo), np.ones((train_size, 1)))) for i in range(ensemble)])
+
+    #Training
+    print('Training...')
+    alpha = np.logspace(-9,3, 1000)
+    y_target = sk[wo - τ: wo + train_size - τ]
+    ridge = [LM.RidgeCV(alphas = alpha) for i in tqdm(range(ensemble))]
+    for i in range(ensemble):
+        ridge[i].fit(x[i], y_target)
+
+    #Testing
+    print('Testing...')
+    x = [np.hstack((local_measurements(outputs[i][train_size:]), two_qubits_measurements(outputs[i][train_size:],  tqo), np.ones((test_size, 1)))) for i in tqdm(range(ensemble))]
+    y_pred = [ridge[i].predict(x[i]) for i in range(ensemble)]
+    return np.array(y_pred)
+
 def sympevo(R: np.ndarray, cov: np.ndarray, S: np.ndarray):
     return np.matmul(S, R), S @ cov @ S.T
 
@@ -394,15 +461,25 @@ def two_qubits_measurements(ρ: np.ndarray, operators: list):
     else:
         ρ = ρ[np.newaxis]
         dim = 1
-    out = np.zeros((dim, int(3*comb(Nq, 2))))
+    out = np.zeros((dim, int(len(operators)*comb(Nq, 2))))
     for i, j in enumerate(combinations(range(Nq),2)):
         ρ_red = ptrace(ρ, list(j))
         for k in range(len(operators)):
             out[:, int(comb(Nq,2)) * k + i] = np.real(np.trace(operators[k]@ρ_red, axis1 = 1, axis2 = 2))
     return out
 
-def von_neumann_entropy(ρ: np.ndarray):
-    return -np.trace(ρ @ np.log(ρ))
+def von_neumann_entropy(ρ: np.ndarray, ax: int = -1) -> float:
+    ρ = np.array(ρ)
+    if ρ.ndim == 1:
+        ρ = np.diag(ρ)
+    λ = np.linalg.eigvalsh(ρ)
+    positive = (λ > 0).all()
+    if positive:
+        return np.sum(-λ * np.log2(λ), axis=ax)
+    else:
+        with np.errstate(divide='ignore', invalid='ignore'):
+            entropy_terms = np.where(λ > 0, -λ * np.log2(λ), 0)
+            return np.sum(entropy_terms, axis=ax)
 
 def zero(dm=False, N=1):
     zero = np.array([1, 0])
