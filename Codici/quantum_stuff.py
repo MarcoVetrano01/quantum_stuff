@@ -11,6 +11,140 @@ from scipy.linalg import sqrtm
 from itertools import combinations
 from scipy.special import comb
 import sklearn.linear_model as LM
+from scipy.sparse.linalg import expm_multiply
+from reservoirpy.datasets import mackey_glass as MG
+import scipy.sparse as sp
+import os
+import multiprocessing
+from sklearn.metrics import mean_squared_error as MSE
+from sklearn.preprocessing import StandardScaler
+
+sx = np.array([[0,1],[1,0]], dtype = complex)
+sy = np.array([[0,-1j],[1j,0]], dtype = complex)
+sz = np.array([[1,0],[0,-1]], dtype = complex)
+tqo = [np.kron(sx, sx), np.kron(sy, sy), np.kron(sz, sz)]
+
+def CD_forecast_training(sk: np.ndarray, H1: np.ndarray | sp.csc_matrix, H0: np.ndarray | sp.csc_matrix, c_ops: list, δt: float,  wo: int = 1000, train_size: int = 1000, ρ = None):
+    
+    #Evolution
+    Nq = int(np.log2(H0.shape[0]))
+    superd = sp.csc_matrix(Super_D(c_ops), dtype = complex)
+    if ρ is None:
+        ρ = zero(dm = True, N = Nq)
+    ρt = np.zeros((wo + train_size, 2**Nq, 2**Nq), dtype = complex)
+    for i in tqdm(range(wo + train_size)):
+        superh = sp.csc_matrix(Super_H(H0 + (sk[i] + 1)*H1), dtype = complex)
+        
+        ρt[i] = Lindblad_Propagator(superh, superd, δt, ρ).reshape(2**Nq, 2**Nq, order = 'F')
+        ρ = ρt[i]
+    # ρt = np.array(ρt[wo:])
+
+    #Measurements
+    if Nq != 1:
+        x_train = np.hstack((local_measurements(ρt).reshape(wo+train_size, 3*Nq), two_qubits_measurements(ρt, tqo), np.ones((wo+train_size, 1))))
+    else:
+        x_train = np.hstack((local_measurements(ρt).reshape(wo+train_size, 3*Nq), np.ones((wo+train_size, 1))))
+    x_train = np.real(x_train)
+
+    #Training
+    alpha = np.logspace(-9,3,1000)
+    ridge = LM.RidgeCV(alphas = alpha)
+    y_target = sk[wo+1:wo+train_size+1]
+    ridge.fit((x_train[wo:]), y_target)
+
+    return ridge, x_train, ρt[-1]
+
+def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, ρf: np.ndarray, H1: np.ndarray | sp.csc_matrix, H0: np.ndarray | sp.csc_matrix, c_ops: list, δt: float,  wo: int = 1000, train_size: int = 1000):
+    
+    #Evolution
+    test_size = 150
+    Nq = int(np.log2(H0.shape[0]))
+    superd = Super_D(c_ops)
+    y_pred = np.zeros((test_size))
+    ρ_in = ρf
+    y_pred[0] = sk[train_size + wo]
+    for i in tqdm(range(test_size-1)):
+        superh = Super_H(H0 + (y_pred[i] + 1)*H1)
+        ρ_in = Lindblad_Propagator(superh, superd, δt, ρ_in).reshape(2**Nq, 2**Nq, order = 'F')
+
+        #Measurements
+        if Nq != 1:
+            x_test = np.hstack((local_measurements(ρ_in).reshape(1,3*Nq), two_qubits_measurements(ρ_in, tqo), np.ones((1, 1))))
+        else:
+            x_test = np.hstack((local_measurements(ρ_in).reshape(1,3*Nq), np.ones((1, 1))))
+            x_test.reshape(1, -1)
+        x_test = np.real(x_test)
+
+        #One step prediction
+        y_pred[i+1] = ridge.predict(x_test)[0]
+        if y_pred[i+1] < 0:
+            y_pred[i+1] = 0
+        if y_pred[i+1] > 1:
+            y_pred[i+1] = 1
+    return y_pred
+
+def cooldown(ρ: np.ndarray, H0: np.ndarray | sp.csc_matrix, c_ops: list, cool: int, δt: float):
+    Nq = int(np.log2(H0.shape[0]))
+    superd = sp.csc_matrix(Super_D(c_ops), dtype = complex)
+    superh = sp.csc_matrix(Super_H(H0), dtype = complex)
+    ρ = Lindblad_Propagator(superh, superd, int(δt*cool), ρ).reshape(2**Nq, 2**Nq, order = 'F')
+    return ρ
+
+def consistency(x1: np.ndarray, x2: np.ndarray):
+    scaler = StandardScaler()
+    x1 = scaler.fit_transform(np.real(x1))
+    x2 = scaler.fit_transform(np.real(x2))
+    return np.abs(x1**2 - x1*x2)
+
+def my_function(args):
+    sk, h, gamma, dt, job_id = args
+    Nq = 5
+    wo = 1000
+    train_size = 1000
+    Js = 1
+    sx = sigmax()
+    sz = sigmaz()
+    sm = sigmam()
+    X = local_operators(sx, Nq)
+    Z = local_operators(sz, Nq)
+    directory = f"{h}_{gamma}_{dt}"
+    fname = f"{h}_{gamma}_{dt}/{job_id}"
+                
+    
+    J = random_coupling(Js, Nq)
+    np.save(fname+"_coupling.npy", J)
+    H1 = h*np.sum(X,0)
+    H0 = np.sum(interaction(X, J) + h*Z,0)
+
+    c_ops = np.sqrt(gamma)*local_operators(sm, Nq)
+    H0 = sp.csc_matrix(H0)
+    H1 = sp.csc_matrix(H1)
+    c_ops = [sp.csc_matrix(c) for c in c_ops]
+    ridge, x_train, rhof = CD_forecast_training(sk, H1, H0, c_ops, dt, wo, train_size)
+    y_pred = CD_forecast_test(ridge, sk, rhof, H1, H0, c_ops, dt, wo, train_size)
+    ρ_cooled = cooldown(rhof, H0, c_ops, 1000, dt)
+    ridge, x_train2, rhof = CD_forecast_training(sk, H1, H0, c_ops, dt, wo, train_size, ρ_cooled)
+    y_pred2 = CD_forecast_test(ridge, sk, rhof, H1, H0, c_ops, dt, wo, train_size)
+    np.save(fname+"_prediction1.npy", y_pred)
+    np.save(fname+"_prediction2.npy", y_pred2)
+    np.save(fname+"_xtrain1.npy", x_train)
+    np.save(fname+"_xtrain2.npy", x_train2)
+    return None
+
+def run_parallel(sk, h: float, gamma: float, dt: float, n_iter: int = 1, max_workers: int = 8):
+    if os.path.exists(f"{h}_{gamma}_{dt}"):
+        with multiprocessing.Pool(processes=max_workers) as pool:
+            args = [(sk, h, gamma, dt, i) for i in range(n_iter)]
+            results = pool.map(my_function, args)
+    else:
+        os.makedirs(f"{h}_{gamma}_{dt}", exist_ok=True)
+        
+        with multiprocessing.Pool(processes=max_workers) as pool:
+            args = [(sk, h, gamma, dt, i) for i in range(n_iter)]
+            results = pool.map(my_function, args)
+        return results
+
+
 
 hbar = 1
 m = 1
@@ -94,10 +228,22 @@ def evolve_unitary(U: np.ndarray, ρ: np.ndarray):
         return np.matmul(U, ρ)
 
 def expect(state: np.ndarray, op: np.ndarray):
-    if len(np.shape(state)) == 2:
-        return np.trace(np.matmul(op, state))
-    else:
+    l = np.shape(state)
+    if len(l) == 1:
         return dag(state) @ op @ state
+    else:
+        is_dm = l[-1] == l[-2]
+        if is_dm:
+            if len(l) == 2:
+                return np.trace(np.matmul(op, state))
+            else:
+                return np.einsum('ijk,kj->i', state, op)
+        else:
+            kets = state
+            bras = np.conjugate(kets).swapaxes(1, 2)
+            state = np.matmul(kets, bras)
+            return np.einsum('ijk,kj->i', state, op)
+        
 
 def fidelity(ρ: np.ndarray, σ: np.ndarray):
     λ = np.linalg.eigvals(ρ@σ)
@@ -170,6 +316,24 @@ def left(dm = False, N: int = 1):
         return l
     else:
         return np.outer(l, l.conj())
+    
+def Lindblad_Propagator(SH: np.ndarray | sp.csc_matrix, SD: np.ndarray | sp.csc_matrix, dt: float, ρ: np.ndarray):
+    """
+    Lindblad propagator for Lindblad equation
+    :L: super operator
+    :dt: time step
+    :ρ: density matrix
+    :return: propagated density matrix
+    """
+    L = SH + SD
+    is_sparse = type(L) == sp.csc_matrix
+    if ρ.ndim != 1:
+        ρ = ρ.flatten('F')
+    if is_sparse:
+        return expm_multiply(L, ρ, start = 0 , stop = dt, num = 2)[-1]
+
+    else:
+        return expm(L*dt) @ (ρ)
 
 def Liouvillian(t: float, state: np.ndarray, H: np.ndarray, c_ops: list):
     if len(state.shape) != 2:
@@ -196,11 +360,11 @@ def local_measurements(ρ: np.ndarray):
     else:
         ρ = ρ[np.newaxis]
         dim = 1
-    out = np.zeros((dim, 3*Nq))
+    out = np.zeros((dim, Nq, 3), dtype = complex)
     for i in range(Nq):
         ρ_red = ptrace(ρ, [i])
         for k in range(3):
-            out[:, 3*i + k] = np.real(np.trace(operators[k]@ρ_red, axis1 = 1, axis2 = 2))
+            out[:, i, k] = expect(ρ_red, operators[k])
     return out
 
 def local_operators(operator: np.ndarray, N: int):
@@ -212,15 +376,19 @@ def local_operators(operator: np.ndarray, N: int):
         op[i] = np.eye(2)
     return result
 
-def MackeyGlass(τ: int = 17, n: int = 10, α: float = 0.1, β: float = 0.2, steps: int = 2000):
-    x = np.random.random(τ)
-    mg = np.zeros(steps+τ)
-    mg[:τ] = x
-    for i in range(τ, steps+τ):
-        mg[i] = mg[i-1] - α*mg[i-1] + β*mg[i-τ]/(1 + mg[i-τ]**n)
-    mg -= np.min(mg)
-    mg /= np.max(mg)
-    return mg
+def MackeyGlass(steps: int = 2000, x0: float = 1.2, ts: float = 3., τ: int = 17, n: int = 10, α: float = 0.2, β: float = 0.1):
+    mg = MG(steps, tau = τ, a = α, b = β, n = n, x0 = x0, h = ts)
+    range = np.max(mg) - np.min(mg) < 1
+    if range:
+        if np.max(mg) > 1:
+            mg -= np.max(mg) - 1
+        elif np.min(mg) < 0:
+            mg += np.abs(np.min(mg))
+        mg /= np.max(mg)
+    else:
+        mg += np.abs(np.min(mg))
+        mg /= np.max(mg)
+    return mg.flatten()
 
 
 def minus(dm = False, N: int = 1):
@@ -431,6 +599,49 @@ def STM(sk:np.ndarray, H: list, δt: float, τ: int = 17, wo: int = 1000, tqo: l
     y_pred = [ridge[i].predict(x[i]) for i in range(ensemble)]
     return np.array(y_pred)
 
+def Super_D(c_ops = []):
+    """
+    Super operator for Lindblad equation
+    :c_ops: list of collapse operators multiplied by their decay rates
+    :return: super dissipator
+    """
+    N = np.shape(c_ops[0])[1]
+    is_sparse = type(c_ops[0]) == sp.csc_matrix
+    if is_sparse:
+        SI = sp.csc_matrix(np.eye(N))
+        N2 = N*N
+        superd = sp.csc_matrix((N2, N2), dtype=complex)
+        for c in c_ops:
+            LL = dag(c).dot(c)
+            superd += (sp.kron(c.conj(), c) - 0.5 * (sp.kron(SI, LL) + sp.kron(LL, SI)))
+            superd = sp.csc_matrix(superd)
+    else:
+        SI = np.eye(N)
+        superd = 0
+        
+        for c in c_ops:
+            LL = dag(c)@c
+            superd += (np.kron(c.conj(), c)-0.5*(np.kron(SI,LL) + np.kron(LL, SI)))
+    return superd
+
+def Super_H(H: np.ndarray | sp.csc_matrix):
+    """
+    Super operator for Hamiltonian
+    :H: Hamiltonian
+    :return: super hamiltonian
+    """
+    is_sparse = type(H) == sp.csc_matrix
+    N = np.shape(H)[0]
+    if is_sparse:
+        SI = sp.csc_matrix(np.eye(N))
+        superh = -1j * (sp.kron(H, SI) - sp.kron(SI, H))
+        superh = sp.csc_matrix(superh)
+    else:
+        H = np.array(H)
+        SI = np.eye(N)
+        superh = -1j * (np.kron(H, SI) - np.kron(SI, H))
+    return superh
+
 def sympevo(R: np.ndarray, cov: np.ndarray, S: np.ndarray):
     return np.matmul(S, R), S @ cov @ S.T
 
@@ -461,14 +672,14 @@ def two_qubits_measurements(ρ: np.ndarray, operators: list):
     else:
         ρ = ρ[np.newaxis]
         dim = 1
-    out = np.zeros((dim, int(len(operators)*comb(Nq, 2))))
+    out = np.zeros((dim, int(len(operators)*comb(Nq, 2))), dtype = complex)
     for i, j in enumerate(combinations(range(Nq),2)):
         ρ_red = ptrace(ρ, list(j))
         for k in range(len(operators)):
             out[:, int(comb(Nq,2)) * k + i] = np.real(np.trace(operators[k]@ρ_red, axis1 = 1, axis2 = 2))
     return out
 
-def von_neumann_entropy(ρ: np.ndarray, ax: int = -1) -> float:
+def von_neumann_entropy(ρ: np.ndarray, ax: int = -1):
     ρ = np.array(ρ)
     if ρ.ndim == 1:
         ρ = np.diag(ρ)
