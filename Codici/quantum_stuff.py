@@ -24,6 +24,15 @@ sy = np.array([[0,-1j],[1j,0]], dtype = complex)
 sz = np.array([[1,0],[0,-1]], dtype = complex)
 tqo = [np.kron(sx, sx), np.kron(sy, sy), np.kron(sz, sz)]
 
+hbar = 1
+m = 1
+
+def anticommutator(A: np.ndarray, B: np.ndarray):
+    return np.dot(A, B) + np.dot(B, A)
+
+def bloch_vector(ρ: np.ndarray):
+    return np.array([np.real(expect(ρ, sigmax())), np.real(expect(ρ, sigmay())), np.real(expect(ρ, sigmaz()))])
+
 def CD_forecast_training(sk: np.ndarray, H1: np.ndarray | sp.csc_matrix, H0: np.ndarray | sp.csc_matrix, c_ops: list, δt: float,  wo: int = 1000, train_size: int = 1000, ρ = None):
     
     #Evolution
@@ -83,78 +92,6 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, ρf: np.ndarray, H1: np.nd
             y_pred[i+1] = 1
     return y_pred
 
-def cooldown(ρ: np.ndarray, H0: np.ndarray | sp.csc_matrix, c_ops: list, cool: int, δt: float):
-    Nq = int(np.log2(H0.shape[0]))
-    superd = sp.csc_matrix(Super_D(c_ops), dtype = complex)
-    superh = sp.csc_matrix(Super_H(H0), dtype = complex)
-    ρ = Lindblad_Propagator(superh, superd, int(δt*cool), ρ).reshape(2**Nq, 2**Nq, order = 'F')
-    return ρ
-
-def consistency(x1: np.ndarray, x2: np.ndarray):
-    scaler = StandardScaler()
-    x1 = scaler.fit_transform(np.real(x1))
-    x2 = scaler.fit_transform(np.real(x2))
-    return np.abs(x1**2 - x1*x2)
-
-def my_function(args):
-    sk, h, gamma, dt, job_id = args
-    Nq = 5
-    wo = 1000
-    train_size = 1000
-    Js = 1
-    sx = sigmax()
-    sz = sigmaz()
-    sm = sigmam()
-    X = local_operators(sx, Nq)
-    Z = local_operators(sz, Nq)
-    directory = f"{h}_{gamma}_{dt}"
-    fname = f"{h}_{gamma}_{dt}/{job_id}"
-                
-    
-    J = random_coupling(Js, Nq)
-    np.save(fname+"_coupling.npy", J)
-    H1 = h*np.sum(X,0)
-    H0 = np.sum(interaction(X, J) + h*Z,0)
-
-    c_ops = np.sqrt(gamma)*local_operators(sm, Nq)
-    H0 = sp.csc_matrix(H0)
-    H1 = sp.csc_matrix(H1)
-    c_ops = [sp.csc_matrix(c) for c in c_ops]
-    ridge, x_train, rhof = CD_forecast_training(sk, H1, H0, c_ops, dt, wo, train_size)
-    y_pred = CD_forecast_test(ridge, sk, rhof, H1, H0, c_ops, dt, wo, train_size)
-    ρ_cooled = cooldown(rhof, H0, c_ops, 1000, dt)
-    ridge, x_train2, rhof = CD_forecast_training(sk, H1, H0, c_ops, dt, wo, train_size, ρ_cooled)
-    y_pred2 = CD_forecast_test(ridge, sk, rhof, H1, H0, c_ops, dt, wo, train_size)
-    np.save(fname+"_prediction1.npy", y_pred)
-    np.save(fname+"_prediction2.npy", y_pred2)
-    np.save(fname+"_xtrain1.npy", x_train)
-    np.save(fname+"_xtrain2.npy", x_train2)
-    return None
-
-def run_parallel(sk, h: float, gamma: float, dt: float, n_iter: int = 1, max_workers: int = 8):
-    if os.path.exists(f"{h}_{gamma}_{dt}"):
-        with multiprocessing.Pool(processes=max_workers) as pool:
-            args = [(sk, h, gamma, dt, i) for i in range(n_iter)]
-            results = pool.map(my_function, args)
-    else:
-        os.makedirs(f"{h}_{gamma}_{dt}", exist_ok=True)
-        
-        with multiprocessing.Pool(processes=max_workers) as pool:
-            args = [(sk, h, gamma, dt, i) for i in range(n_iter)]
-            results = pool.map(my_function, args)
-        return results
-
-
-
-hbar = 1
-m = 1
-
-def anticommutator(A: np.ndarray, B: np.ndarray):
-    return np.dot(A, B) + np.dot(B, A)
-
-def bloch_vector(ρ: np.ndarray):
-    return np.array([np.real(expect(ρ, sigmax())), np.real(expect(ρ, sigmay())), np.real(expect(ρ, sigmaz()))])
-
 def collisions(ρ_in: list, res: np.ndarray, H: np.ndarray, dt: float, tstep: int, operators: list = []):
     steps = len(ρ_in)
     U = expm(-1j*H*dt/tstep)
@@ -173,6 +110,18 @@ def collisions(ρ_in: list, res: np.ndarray, H: np.ndarray, dt: float, tstep: in
         ρ = ptrace(ρ, [i for i in range(1, N)])
     return np.array(result)     
 
+def consistency(x1: np.ndarray, x2: np.ndarray):
+    """
+    Function to calculate the consistency of two sets of data.
+    :param x1: First set of data
+    :param x2: Second set of data
+    :return: Consistency value
+    """
+    x1_rescale = StandardScaler().fit_transform(x1.reshape(-1,1))
+    x2_rescale = StandardScaler().fit_transform(x2.reshape(-1,1))
+
+    return np.mean(x1_rescale*x2_rescale)
+
 def commutator(A: np.ndarray, B: np.ndarray):
     return np.dot(A, B) - np.dot(B, A)
 
@@ -181,6 +130,13 @@ def condition_number(P: np.ndarray): #to update
     cn = svd[0]/svd[3]
     # print(svd[0], svd[3])
     return cn
+
+def cooldown(ρ: np.ndarray, H0: np.ndarray | sp.csc_matrix, c_ops: list, cool: int, δt: float):
+    Nq = int(np.log2(H0.shape[0]))
+    superd = sp.csc_matrix(Super_D(c_ops), dtype = complex)
+    superh = sp.csc_matrix(Super_H(H0), dtype = complex)
+    ρ = Lindblad_Propagator(superh, superd, int(δt*cool), ρ).reshape(2**Nq, 2**Nq, order = 'F')
+    return ρ
 
 def create(size: int):
     a = np.zeros((size,size))
@@ -400,6 +356,54 @@ def minus(dm = False, N: int = 1):
         return meno
     else:
         return np.outer(meno, meno.conj())
+
+def my_function(args):
+    sk, h, gamma, dt, job_id = args
+    Nq = 5
+    wo = 1000
+    train_size = 1000
+    Js = 1
+    sx = sigmax()
+    sz = sigmaz()
+    sm = sigmam()
+    X = local_operators(sx, Nq)
+    Z = local_operators(sz, Nq)
+    directory = f"{h}_{gamma}_{dt}"
+    fname = f"{h}_{gamma}_{dt}/{job_id}"
+                
+    
+    J = random_coupling(Js, Nq)
+    np.save(fname+"_coupling.npy", J)
+    H1 = h*np.sum(X,0)
+    H0 = np.sum(interaction(X, J) + h*Z,0)
+
+    c_ops = np.sqrt(gamma)*local_operators(sm, Nq)
+    H0 = sp.csc_matrix(H0)
+    H1 = sp.csc_matrix(H1)
+    c_ops = [sp.csc_matrix(c) for c in c_ops]
+    ridge, x_train, rhof = CD_forecast_training(sk, H1, H0, c_ops, dt, wo, train_size)
+    y_pred = CD_forecast_test(ridge, sk, rhof, H1, H0, c_ops, dt, wo, train_size)
+    ρ_cooled = cooldown(rhof, H0, c_ops, 1000, dt)
+    ridge, x_train2, rhof = CD_forecast_training(sk, H1, H0, c_ops, dt, wo, train_size, ρ_cooled)
+    y_pred2 = CD_forecast_test(ridge, sk, rhof, H1, H0, c_ops, dt, wo, train_size)
+    np.save(fname+"_prediction1.npy", y_pred)
+    np.save(fname+"_prediction2.npy", y_pred2)
+    np.save(fname+"_xtrain1.npy", x_train)
+    np.save(fname+"_xtrain2.npy", x_train2)
+    return None
+
+def run_parallel(sk, h: float, gamma: float, dt: float, n_iter: int = 1, max_workers: int = 8):
+    if os.path.exists(f"{h}_{gamma}_{dt}"):
+        with multiprocessing.Pool(processes=max_workers) as pool:
+            args = [(sk, h, gamma, dt, i) for i in range(n_iter)]
+            results = pool.map(my_function, args)
+    else:
+        os.makedirs(f"{h}_{gamma}_{dt}", exist_ok=True)
+        
+        with multiprocessing.Pool(processes=max_workers) as pool:
+            args = [(sk, h, gamma, dt, i) for i in range(n_iter)]
+            results = pool.map(my_function, args)
+        return results
 
 def momentum(omega: np.ndarray, size: int):
     return np.imag(1)*np.sqrt(hbar*m*omega/2)*(create(size) - destroy(size))
