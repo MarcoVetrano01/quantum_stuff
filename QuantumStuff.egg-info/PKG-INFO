@@ -1,0 +1,20 @@
+Metadata-Version: 2.4
+Name: QuantumStuff
+Version: 0.1.0
+Summary: This python package is a tool for quantum simulation and particularly for quantum reservoir computing and quantum extreme learning machines.
+Author-email: Marco Vetrano <marco.vetrano01@gmail.com>
+License-Expression: MIT
+Project-URL: Homepage, https://github.com/MarcoVetrano01/QuantumStuff
+Requires-Python: >=3.12
+Description-Content-Type: text/markdown
+License-File: LICENSE.txt
+Requires-Dist: numpy==2.3.0
+Requires-Dist: reservoirpy==0.3.13
+Requires-Dist: scikit_learn==1.7.0
+Requires-Dist: scipy==1.15.3
+Requires-Dist: StrawberryFields==0.23.0
+Requires-Dist: tqdm==4.66.5
+Dynamic: license-file
+
+This package contains usefull tools for quantum simulations and for the implementations of quantum reservoir computing and quantum extreme learning machines.
+This project has been done during my PhD at the University of Palermo under the supervision of Professor Massimo Palma and Professor Salvatore Lorenzo, with whom I worked in many instances on these quantum machine learning techniques.

@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=75.1.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "QuantumStuff"
+version = "0.1.0"
+authors = [{ name="Marco Vetrano", email="marco.vetrano01@gmail.com" }]
+description = "This python package is a tool for quantum simulation and particularly for quantum reservoir computing and quantum extreme learning machines."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [ 
+    "numpy==2.3.0", 
+    "reservoirpy==0.3.13", 
+    "scikit_learn==1.7.0", 
+    "plotly==6.1.2",
+    "scipy==1.15.3", 
+    "StrawberryFields==0.23.0", 
+    "tqdm==4.66.5"
+]
+
+license = "MIT"
+license-files = ["LICENSE.txt"]
+
+[project.urls]
+"Homepage" = "https://github.com/MarcoVetrano01/QuantumStuff"

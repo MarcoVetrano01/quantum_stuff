@@ -1,0 +1,184 @@
+import numpy as np
+from .utils import is_state, tensor_product, ket_to_dm, ptrace
+from itertools import combinations
+
+def anticommutator(A: np.ndarray | list, B: np.ndarray | list):
+    """
+    Anticommutator of two matrices A and B.
+    Args:
+        A (np.ndarray): First matrix.
+        B (np.ndarray): Second matrix.
+    Returns:
+        np.ndarray: The anticommutator of A and B.
+    """
+    if not isinstance(A, (list, np.ndarray)):
+        raise Exception("Both A and B must be numpy arrays or lists of numpy arrays.")
+    if not isinstance(B, (list, np.ndarray)):
+        raise Exception("Both A and B must be numpy arrays or lists of numpy arrays.")
+    
+    A = np.asarray(A, dtype = complex)
+    B = np.asarray(B, dtype = complex)
+    return A @ B + B @ A
+
+def commutator(A: np.ndarray | list, B: np.ndarray | list):
+    """
+    Commutator of two matrices A and B.
+    Args:
+        A (np.ndarray): First matrix.
+        B (np.ndarray): Second matrix.
+    Returns:
+        np.ndarray: The commutator of A and B.
+    """
+    if not isinstance(A, (list, np.ndarray)):
+        raise Exception("Both A and B must be numpy arrays or lists of numpy arrays.")
+    if not isinstance(B, (list, np.ndarray)):
+        raise Exception("Both A and B must be numpy arrays or lists of numpy arrays.")
+    if A.shape != B.shape:
+        raise Exception("A and B must have the same shape.")
+    
+    A = np.asarray(A, dtype=complex)
+    B = np.asarray(B, dtype=complex)
+    
+    return A @ B - B @ A
+
+def haar_random_unitary(n_qubits):
+    """
+    Generate a Haar random unitary matrix for n_qubits.
+    
+    Parameters:
+    - n_qubits (int): Number of qubits
+    
+    Returns:
+    - numpy.ndarray: A Haar random unitary matrix
+    """
+    if (not isinstance(n_qubits, int) or n_qubits<1):
+        raise Exception("n_qubits must be a positive integer")
+    dim = 2**n_qubits
+    
+    # Generate Haar random unitary
+    Z = (np.random.randn(dim, dim) + 1j*np.random.randn(dim, dim)) / np.sqrt(2)
+    Q, R = np.linalg.qr(Z)
+    # Fix phases to get Haar distribution
+    phases = np.diag([R[i,i]/abs(R[i,i]) for i in range(dim)])
+    U = Q @ phases
+    
+    return U
+
+def local_operators(operator: np.ndarray, N: int):
+    """
+    Creates a list of local operators for a given operator and number of qubits.
+    Args:
+        operator (np.ndarray): The operator to be replicated.
+        N (int): The number of qubits.
+    Returns:
+        np.ndarray: A list of local operators for the given operator and number of qubits.
+    """
+    if not isinstance(operator, np.ndarray):
+        raise Exception("Operator must be a numpy array.")
+    if not isinstance(N, int) or N <= 0:
+        raise Exception("N must be a positive integer.")
+    
+    op = [np.eye(2)]*N
+    result = np.zeros((N, 2**N, 2**N), dtype = np.complex128)
+    for i in range(N):
+        op[i] = operator
+        result[i] = tensor_product(op)
+        op[i] = np.eye(2)
+    return result
+
+def measure(rho: np.ndarray | list, op: np.ndarray | list):
+    """
+    Measure the expectation value of an operator on a quantum state or density matrix.
+    Parameters
+    Args:
+        rho (np.ndarray | list): The quantum state or density matrix to measure.
+        op (np.ndarray | list): The operator to measure.
+    Returns:
+        np.ndarray: The expectation value of the operator on the quantum state or density matrix.
+    """
+
+    if not is_state(rho)[1]:
+        raise ValueError("Input must be a quantum state or a list of quantum states.")
+    if not (isinstance(op, (np.ndarray, list)) and isinstance(rho, (np.ndarray, list))):
+        raise TypeError("Both ρ and op must be either numpy arrays or lists.")
+    
+    rho = np.asarray(rho, dtype = complex)
+    if rho.ndim == 1 or (rho.shape[0] != rho.shape[1] and rho.ndim == 2):
+        rho = ket_to_dm(rho)
+        
+    op = np.asarray(op, dtype = complex)
+    if op.ndim == 3:
+        nop = op.shape[0]
+    else:
+        nop = 1
+        op = op[np.newaxis,:]
+    
+    if rho.ndim == 3:
+        nstates = rho.shape[0]
+    else:
+        nstates = 1
+        rho = rho[np.newaxis]
+    nq = int(np.log2(op.shape[1]))
+    nq_rho = int(np.log2(rho.shape[1]))
+    
+    if nq != nq_rho:
+        combs = list(combinations(range(nq_rho), nq))
+        ncombs = len(combs)
+        rhos = np.zeros((nstates, ncombs, 2**nq, 2**nq), dtype = complex)
+        for i, c in enumerate(combs):
+            rhos[:, i] = ptrace(rho, list(c))
+    else:
+        ncombs = 1
+        rhos = rho[np.newaxis]
+    rhos = rhos[np.newaxis]
+    op = op[:,np.newaxis, np.newaxis]
+    return np.transpose(np.linalg.trace(op @ rhos), (1,0,2))
+
+def sigmap():
+    '''
+    Creates the raising operator (sigma plus) for a qubit.
+    Returns:
+        np.ndarray: The raising operator (sigma plus) for a qubit.
+    '''
+    sp = np.array([[0,1],[0,0]], dtype = complex)
+    return sp
+
+def sigmam():
+    '''
+    Creates the lowering operator (sigma minus) for a qubit.
+    Returns:
+        np.ndarray: The lowering operator (sigma minus) for a qubit.
+    '''
+
+    sm = np.array([[0,0],[1,0]], dtype = complex)
+    return sm
+
+def sigmax():
+    '''
+    Creates the Pauli X operator (sigma x) for a qubit.
+    Returns:
+        np.ndarray: The Pauli X operator (sigma x) for a qubit.
+    '''
+
+    sx = np.array([[0,1], [1,0]], dtype = complex)
+    return sx
+
+def sigmay():
+    '''
+    Creates the Pauli Y operator (sigma y) for a qubit.
+    Returns:
+        np.ndarray: The Pauli Y operator (sigma y) for a qubit.
+    '''
+
+    sy = np.array([[0,1j],[-1j,0]], dtype = complex)
+    return sy
+
+def sigmaz():
+    '''
+    Creates the Pauli Z operator (sigma z) for a qubit.
+    Returns:
+        np.ndarray: The Pauli Z operator (sigma z) for a qubit.
+    '''
+
+    sz = np.array([[1,0],[0,-1]], dtype = complex)
+    return sz
