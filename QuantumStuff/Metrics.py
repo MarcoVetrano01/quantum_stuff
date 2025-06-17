@@ -39,6 +39,47 @@ def fidelity(state1: np.ndarray | list, state2: np.ndarray | list):
     else:
         return(np.sum(np.sqrt(eigs)))
 
+def mutual_info(state_total: np.ndarray | list, state_A: np.ndarray | list, state_B: np.ndarray | list):
+    """
+    Calculate the mutual information between two subsystems A and B given a total state.
+    The mutual information is defined as:
+    I(A:B) = S(A) + S(B) - S(A:B)
+
+    where S(X) is the von Neumann entropy of subsystem X.
+    Args:
+        state_total (np.ndarray | list): The total quantum state, can be a density matrix or a ket.
+        state_A (np.ndarray | list): The quantum state of subsystem A.
+        state_B (np.ndarray | list): The quantum state of subsystem B.
+    Returns:
+        float: The mutual information I(A:B).
+    """
+    check1 = is_state(state_A)
+    check2 = is_state(state_B)
+    check3 = is_state(state_total)
+    if not (check1[1] and check2[1] and check3[1]):
+        raise ValueError("All states must be valid quantum states.")
+    Na = int(np.log2(state_A.shape[-1]))
+    Nb = int(np.log2(state_B.shape[-1]))
+    if Na + Nb != int(np.log2(state_total.shape[-1])):
+        raise ValueError("The dimensions of the states do not match: "
+                         "dim(A) + dim(B) must equal dim(total).")
+    dimsA = state_A.ndim
+    dimsB = state_B.ndim
+    if dimsA != dimsB:
+        raise ValueError("The dimensions of the states A and B must match.")
+    if check1[0] != 3:
+        state_A = ket_to_dm(state_A)
+    if check2[0] != 3:
+        state_B = ket_to_dm(state_B)
+    if check3[0] != 3:
+        state_total = ket_to_dm(state_total)
+    
+    state_total = np.asarray(state_total, dtype = complex)
+    state_A = np.asarray(state_A, dtype = complex)
+    state_B = np.asarray(state_B, dtype = complex)
+    
+    return von_neumann_entropy(state_A) + von_neumann_entropy(state_B) - von_neumann_entropy(state_total)
+
 def purity(state: np.ndarray | list):
     """
     Computes the purity of a quantum state.
