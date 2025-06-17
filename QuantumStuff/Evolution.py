@@ -26,24 +26,27 @@ def CD_evolution(sk: np.ndarray | list, H1: np.ndarray | csc_matrix | csc_array,
     if not isinstance(sk, (np.ndarray, list)):
         raise TypeError("sk must be a numpy array or a list")
     sk = np.asarray(sk, dtype = float)
-    if not (is_herm(H1) or is_herm(H0)):
+    if not (is_herm(H1) and is_herm(H0)):
         raise TypeError("H0 and H1 must be Hermitian matrices")
     if not isinstance(c_ops, list):
         raise TypeError("c_ops must be a list of numpy arrays or csc_matrix")
     if not isinstance(δt, (int, float)):
         raise TypeError("δt must be an integer or a float")
-    if not isinstance(steps, int) or steps <= 0 or len(sk) < steps:
+    if (not isinstance(steps, int)) or steps <= 0 or len(sk) < steps:
         raise ValueError("Steps must be a positive integer, whose length is less than or equal to the length of sk")
     if not all(isinstance(c, (np.ndarray, csc_matrix, csc_array)) for c in c_ops):
         raise TypeError("All collapse operators in c_ops must be numpy arrays, csc_matrix, or csc_array")
     
     Nq = int(np.log2(H0.shape[0]))
-    superd = csc_matrix(Super_D(c_ops), dtype = complex)
+    if len(c_ops) != 0:
+        superd = csc_array(Super_D(c_ops), dtype = complex)
+    else:
+        superd = None
     if ρ is None:
         ρ = zero(dm = True, N = Nq)
     ρt = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
     for i in tqdm(range(steps), disable = disable_progress_bar):
-        superh = csc_matrix(Super_H(H0 + (sk[i] + 1)*H1), dtype = complex)
+        superh = csc_array(Super_H(H0 + (sk[i] + 1)*H1), dtype = complex)
         ρt[i] = Lindblad_Propagator(superh, superd, δt, ρ).reshape(2**Nq, 2**Nq)
         ρ = ρt[i]
 
@@ -113,7 +116,7 @@ def interaction(op: np.ndarray | list, J: np.ndarray | list):
     Returns:
         np.ndarray: Interaction Hamiltonian as a dense matrix.
     """
-    if not isinstance(op, (np.ndarray, list)) or not isinstance(J, (np.ndarray, list)):
+    if not (isinstance(op, (np.ndarray, list)) and isinstance(J, (np.ndarray, list))):
         raise TypeError("op and J must be numpy arrays or lists")
     
     sites = len(op) < 2
@@ -139,7 +142,7 @@ def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix
     """
 
     if SD == None:
-        SD = csc_matrix(np.zeros_like(SH))
+        SD = csc_array(np.zeros_like(SH.toarray()))
     L = SH + SD
     is_sparse = type(L) == csc_matrix or csc_array
     if ρ.ndim != 1:
@@ -187,7 +190,7 @@ def random_coupling(Js: float, sites: int):
 
     if not isinstance(Js, (int, float)):
         raise TypeError("Js must be a number (int or float)")
-    if not isinstance(sites, int) or sites <= 0:
+    if (not isinstance(sites, int)) or sites <= 0:
         raise ValueError("sites must be a positive integer")
     
     J = np.random.uniform(-Js, Js, size = (sites, sites))
@@ -206,13 +209,13 @@ def Super_D(c_ops = []):
     N = np.shape(c_ops[0])[1]
     is_sparse = isinstance(c_ops[0], (csc_matrix, csc_array))
     if is_sparse:
-        SI = csc_matrix(np.eye(N))
+        SI = csc_array(np.eye(N))
         N2 = N*N
-        superd = csc_matrix((N2, N2), dtype=complex)
+        superd = csc_array((N2, N2), dtype=complex)
         for c in c_ops:
             LL = dag(c).dot(c)
             superd += (kron(c.conj(), c) - 0.5 * (kron(SI, LL) + kron(LL, SI)))
-            superd = csc_matrix(superd)
+            superd = csc_array(superd)
     else:
         SI = np.eye(N)
         superd = 0
