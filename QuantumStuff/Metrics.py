@@ -39,6 +39,34 @@ def fidelity(state1: np.ndarray | list, state2: np.ndarray | list):
     else:
         return(np.sum(np.sqrt(eigs)))
 
+def Holevo_Info(states: np.ndarray | list, probabilities: np.ndarray | list):
+
+    """
+    Compute the Holevo information for an ensemble of quantum states.
+    The Holevo information quantifies the amount of classical information that can be extracted from a quantum system.
+    Given a set of quantum states and their corresponding probabilities, it measures the difference between the average entropy of the states and the entropy of the average state.
+    η = ∑ p_i * ρ_i
+    χ(η) = S(η) - ∑ p_i * S(ρ_i)
+    where S(ρ) is the von Neumann entropy of the state ρ, p_i is the probability of state ρ_i, and η is the average state over the ensemble.
+    Args:
+        states (np.ndarray | list): A list or array of quantum states (density matrices).
+        probabilities (np.ndarray | list): A list or array of probabilities corresponding to each state.
+    Returns:
+        float: The Holevo information of the ensemble.
+    """
+    check = is_state(states)
+    if not check[1]:
+        raise ValueError("states must be a list or array of quantum states.")
+    states = ket_to_dm(states)
+    if not isinstance(probabilities, (np.ndarray, list)):
+        raise ValueError("Probabilities must be a list or array of probabilities.")
+    if np.sum(probabilities) != 1:
+        raise ValueError("Probabilities must sum to 1.")
+    
+    eta = np.average(states, weights= probabilities, axis = 0)
+    return von_neumann_entropy(eta) - np.average(von_neumann_entropy(states), weights = probabilities, axis = 0)
+
+
 def mutual_info(state_total: np.ndarray | list, state_A: np.ndarray | list, state_B: np.ndarray | list):
     """
     Calculate the mutual information between two subsystems A and B given a total state.
@@ -67,12 +95,9 @@ def mutual_info(state_total: np.ndarray | list, state_A: np.ndarray | list, stat
     dimsB = state_B.ndim
     if dimsA != dimsB:
         raise ValueError("The dimensions of the states A and B must match.")
-    if check1[0] != 3:
-        state_A = ket_to_dm(state_A)
-    if check2[0] != 3:
-        state_B = ket_to_dm(state_B)
-    if check3[0] != 3:
-        state_total = ket_to_dm(state_total)
+    state_A = ket_to_dm(state_A)
+    state_B = ket_to_dm(state_B)
+    state_total = ket_to_dm(state_total)
     
     state_total = np.asarray(state_total, dtype = complex)
     state_A = np.asarray(state_A, dtype = complex)
