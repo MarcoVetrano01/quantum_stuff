@@ -128,18 +128,18 @@ def ket_to_dm(state: np.ndarray | list) -> np.ndarray:
     
 def ptrace(rho: np.ndarray | list, index: list):
     """
-    Partial trace of a density matrix ρ. The specified indeces are left untraced.
+    Partial trace of a density matrix rho. The specified indeces are left untraced.
     The remaining indices are traced out.
     Args:
-        ρ (np.ndarray | list): The density matrix to be traced.
+        rho (np.ndarray | list): The density matrix to be traced.
         index (list): List of indices to keep untraced.
     Returns:
         np.ndarray: The resulting density matrix after partial trace.
     """
-    if not isinstance(ρ, (list, np.ndarray)):
+    if not isinstance(rho, (list, np.ndarray)):
         raise TypeError("Input must be a list or numpy array.")
     rho = np.asarray(rho, dtype = complex)
-    shape = ρ.shape
+    shape = rho.shape
 
     if len(shape)>2:
         dim = shape[0]
@@ -169,8 +169,8 @@ def ptrace(rho: np.ndarray | list, index: list):
         
     out = ''.join(out)
     stringa = ''.join(stringa)
-    ρ = np.einsum(stringa+'->'+out, ρ.reshape(new_shape)).reshape(shape1)
-    return ρ
+    rho = np.einsum(stringa+'->'+out, rho.reshape(new_shape)).reshape(shape1)
+    return rho
 
 def tensor_product(operators: list):
     """

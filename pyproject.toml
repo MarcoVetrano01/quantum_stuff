@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "QuantumStuff"
-version = "0.6.2"
+version = "0.6.3"
 authors = [{ name="Marco Vetrano", email="marco.vetrano01@gmail.com" }]
 description = "This python package is a tool for quantum simulation and particularly for quantum reservoir computing and quantum extreme learning machines."
 readme = "README.md"
