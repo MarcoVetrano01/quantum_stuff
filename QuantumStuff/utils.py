@@ -3,8 +3,9 @@ from functools import reduce
 from itertools import combinations
 import string
 import random
+from scipy.sparse import csc_array, csc_matrix
 
-def dag(op: np.ndarray | list):
+def dag(op: np.ndarray | list | csc_array | csc_matrix):
     """
     Returns the adjoint (or Hermitian conjugate) of a given operator.
     Args:
@@ -13,10 +14,10 @@ def dag(op: np.ndarray | list):
     Returns:
         np.ndarray: The adjoint of the operator.
     """
-    if not isinstance(op, (list, np.ndarray)):
+    if not isinstance(op, (list, np.ndarray, csc_array, csc_matrix)):
         return Exception("op must be a numpy array or a list of numpy arrays.")
-    
-    op = np.asarray(op, dtype=complex)
+    if isinstance(op, (list)):
+        op = np.asarray(op, dtype=complex)
     shape = len(np.shape(op)) > 2
 
     if shape:
@@ -30,7 +31,7 @@ def dag(op: np.ndarray | list):
     else:
         return np.conj(op).T
 
-def is_herm(A: np.ndarray | list):
+def is_herm(A: np.ndarray | list | csc_array | csc_matrix):
     """
     Check if a matrix is Hermitian.
     Args:
@@ -39,11 +40,14 @@ def is_herm(A: np.ndarray | list):
         bool: True if the matrix is Hermitian, False otherwise.
     """
 
-    if not isinstance(A, (np.ndarray,list)):
-        raise TypeError("Input must be a numpy array or a list of arrays.")
-
-    A = np.asarray(A, dtype=complex)
-    return(np.allclose(A, dag(A)))
+    if not isinstance(A, (np.ndarray,list, csc_array, csc_matrix)):
+        raise TypeError("Input must be a numpy array, a list of arrays or a list of csc_matrices.")
+    if isinstance(A, (csc_array, csc_matrix)):
+        B = A.toarray()
+    if isinstance(A, list) and isinstance(A[0], (csc_array, csc_matrix)):
+        B = [a.toarray() for a in A]
+    B = np.asarray(B, dtype=complex)
+    return(np.allclose(B, dag(B)))
 
 def is_norm(A: np.ndarray | list):
     """
