@@ -180,7 +180,7 @@ def sigmay():
         np.ndarray: The Pauli Y operator (sigma y) for a qubit.
     '''
 
-    sy = np.array([[0,1j],[-1j,0]], dtype = complex)
+    sy = np.array([[0,-1j],[1j,0]], dtype = complex)
     return sy
 
 def sigmaz():
