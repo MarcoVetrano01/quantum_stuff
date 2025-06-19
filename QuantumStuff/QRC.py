@@ -5,7 +5,7 @@ from .Evolution import Super_H, Super_D, Lindblad_Propagator
 from .States import zero
 from .utils import is_herm, is_state, dag
 
-def CD_evolution(sk: np.ndarray | list, H1: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float,  steps: int, ρ = None, disable_progress_bar = False):
+def CD_evolution(sk: np.ndarray | list, H1: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float,  steps: int, state = None, disable_progress_bar = False):
     """
     Evolution of a quantum state under the continuous dissipation encoding as implemented in https://doi.org/10.22331/q-2024-03-20-1291.
     Args:
@@ -15,11 +15,12 @@ def CD_evolution(sk: np.ndarray | list, H1: np.ndarray | csc_matrix | csc_array,
         c_ops (list): List of collapse operators.
         δt (float): Time step for the evolution.
         steps (int): Number of time steps to evolve.
-        ρ (np.ndarray, optional): Initial density matrix. Defaults to None, which initializes to the zero state.
+        state (np.ndarray, optional): Initial density matrix. Defaults to None, which initializes to the zero state.
         disable_progress_bar (bool, optional): If True, disables the progress bar. Defaults to False.
     Returns:
         np.ndarray: Time-evolved density matrix at each step.
     """
+
     if not isinstance(sk, (np.ndarray, list)):
         raise TypeError("sk must be a numpy array or a list")
     sk = np.asarray(sk, dtype = float)
@@ -39,12 +40,13 @@ def CD_evolution(sk: np.ndarray | list, H1: np.ndarray | csc_matrix | csc_array,
         superd = csc_array(Super_D(c_ops), dtype = complex)
     else:
         superd = None
-    if ρ is None:
-        ρ = zero(dm = True, N = Nq)
-    ρt = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
+    if state is None:
+        state = zero(dm = True, N = Nq)
+    state_t = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
     for i in tqdm(range(steps), disable = disable_progress_bar):
         superh = csc_array(Super_H(H0 + (sk[i] + 1)*H1), dtype = complex)
-        ρt[i] = Lindblad_Propagator(superh, superd, δt, ρ).reshape(2**Nq, 2**Nq)
-        ρ = ρt[i]
+        state_t[i] = Lindblad_Propagator(superh, superd, δt, state).reshape(2**Nq, 2**Nq)
+        state = state_t[i]
 
-    return ρt
+    return state_t
+

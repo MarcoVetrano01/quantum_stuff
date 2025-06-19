@@ -1,6 +1,7 @@
 import numpy as np
 from .utils import is_state, tensor_product, ket_to_dm, ptrace
 from itertools import combinations
+from scipy.sparse import csc_array, kron, csc_matrix
 
 def anticommutator(A: np.ndarray | list, B: np.ndarray | list):
     """
@@ -64,7 +65,7 @@ def haar_random_unitary(n_qubits):
     
     return U
 
-def local_operators(operator: np.ndarray, N: int):
+def local_operators(operator: np.ndarray | csc_array | csc_matrix, N: int):
     """
     Creates a list of local operators for a given operator and number of qubits.
     Args:
@@ -73,17 +74,26 @@ def local_operators(operator: np.ndarray, N: int):
     Returns:
         np.ndarray: A list of local operators for the given operator and number of qubits.
     """
-    if not isinstance(operator, np.ndarray):
+    if not isinstance(operator, (np.ndarray, csc_array, csc_matrix)):
         raise Exception("Operator must be a numpy array.")
     if not isinstance(N, int) or N <= 0:
         raise Exception("N must be a positive integer.")
+    if isinstance(operator, (np.ndarray)):
+        op = [np.eye(2)]*N
+        result = np.zeros((N, 2**N, 2**N), dtype = np.complex128)
+        for i in range(N):
+            op[i] = operator
+            result[i] = tensor_product(op)
+            op[i] = np.eye(2)
+    else:
+        op = [csc_array(np.eye(2))]*N
+        result = []
+        for i in range(N):
+            op[i] = operator
+            result.append(tensor_product(op))
+            op[i] = csc_array(np.eye(2))
+            result[i] = csc_array(result[i])
     
-    op = [np.eye(2)]*N
-    result = np.zeros((N, 2**N, 2**N), dtype = np.complex128)
-    for i in range(N):
-        op[i] = operator
-        result[i] = tensor_product(op)
-        op[i] = np.eye(2)
     return result
 
 def measure(rho: np.ndarray | list, op: np.ndarray | list):

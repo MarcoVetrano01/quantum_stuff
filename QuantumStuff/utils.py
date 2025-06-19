@@ -3,7 +3,7 @@ from functools import reduce
 from itertools import combinations
 import string
 import random
-from scipy.sparse import csc_array, csc_matrix
+from scipy.sparse import csc_array, csc_matrix, kron
 
 def dag(op: np.ndarray | list | csc_array | csc_matrix):
     """
@@ -184,5 +184,7 @@ def tensor_product(operators: list):
     Returns:
         np.ndarray: The resulting tensor product of the operators.
     """
-
-    return reduce(np.kron, operators)
+    if isinstance(operators[0], (csc_array, csc_matrix)):
+        return(reduce(kron, operators))
+    else:
+        return reduce(np.kron, operators)
