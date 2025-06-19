@@ -44,8 +44,10 @@ def is_herm(A: np.ndarray | list | csc_array | csc_matrix):
         raise TypeError("Input must be a numpy array, a list of arrays or a list of csc_matrices.")
     if isinstance(A, (csc_array, csc_matrix)):
         B = A.toarray()
-    if isinstance(A, list) and isinstance(A[0], (csc_array, csc_matrix)):
+    elif isinstance(A, list) and isinstance(A[0], (csc_array, csc_matrix)):
         B = [a.toarray() for a in A]
+    else:
+        B = A
     B = np.asarray(B, dtype=complex)
     return(np.allclose(B, dag(B)))
 
