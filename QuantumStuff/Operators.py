@@ -98,13 +98,17 @@ def local_operators(operator: np.ndarray | csc_array | csc_matrix, N: int):
 
 def measure(rho: np.ndarray | list, op: np.ndarray | list):
     """
-    Measure the expectation value of an operator on a quantum state or density matrix.
+    Measure the expectation value of an operator or a list of operators on a quantum state or a list of quantum states.
+    If the operators have live in in a Hilbert space of higher dimension of the state, the function will return the expectation value
+    for all the combinations of the state and the operator.
     Parameters
     Args:
         rho (np.ndarray | list): The quantum state or density matrix to measure.
         op (np.ndarray | list): The operator to measure.
     Returns:
         np.ndarray: The expectation value of the operator on the quantum state or density matrix.
+                    The shape of the output is (n_states, ncomb, n_ops) where n_comb is the number of measurements
+                    i can perform with an operator acting on a Hilbert space smaller than that of the state.
     """
 
     if not is_state(rho)[1]:
