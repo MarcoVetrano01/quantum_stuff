@@ -132,15 +132,15 @@ def ket_to_dm(state: np.ndarray | list) -> np.ndarray:
     else:
         return np.einsum('ni,nj->nij', state, state.conj())
     
-def nqubit(rho: np.ndarray | list) -> int:
+def nqubit(op: np.ndarray | list) -> int:
     """
     Returns the number of qubits in a given density matrix.
     Args:
-        rho (np.ndarray | list): The density matrix to check.
+        op (np.ndarray | list): The density matrix to check.
     Returns:
         int: The number of qubits in the density matrix."""
     
-    return int(np.log2(rho.shape[1])) if isinstance(rho, (np.ndarray, list)) else 0
+    return int(np.log2(op.shape[1])) if isinstance(op, (np.ndarray, (list, np.array))) else 0
 
 def ptrace(rho: np.ndarray | list, index: list):
     """
