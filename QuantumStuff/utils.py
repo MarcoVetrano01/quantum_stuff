@@ -141,6 +141,7 @@ def nqubit(op: np.ndarray | list) -> int:
         int: The number of qubits in the density matrix."""
     if not isinstance(op, (np.ndarray, list)):
         raise TypeError("Input must be a numpy array or a list of arrays.")
+    op = np.asarray(op, dtype=complex)
     if is_state(op)[1]:
         op = ket_to_dm(op)
     
