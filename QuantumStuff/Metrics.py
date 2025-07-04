@@ -139,7 +139,7 @@ def trace_distance(state1: np.ndarray | list, state2: np.ndarray | list | None =
 
     if not isinstance(state1, (list,np.ndarray)):
         raise TypeError("State 1 must be a list or numpy array")
-    if not isinstance(state2, (np.ndarray, list, None)):
+    if not isinstance(state2, (np.ndarray, (list, type(None)))):
         raise TypeError("State 2 must be a list or numpy array or None")
     if state2 is not None:
         check1 = is_state(state1)

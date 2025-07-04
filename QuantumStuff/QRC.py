@@ -2,12 +2,14 @@ import numpy as np
 from tqdm import tqdm
 from scipy.sparse import csc_matrix, csc_array
 from .Evolution import Super_H, Super_D, Lindblad_Propagator
-from .States import zero
+from .States import zero, random_qubit
+from .Metrics import trace_distance
 from .utils import is_herm, is_state, dag
 from .Operators import measure
 import sklearn.linear_model as LM
 
-def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float,  steps: int, state = None, disable_progress_bar = False):
+
+def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float,  steps: int, state = None, disable_progress_bar = False, ignore = False):
     """
     Evolution of a quantum state under the continuous dissipation encoding as implemented in 
     https://doi.org/10.22331/q-2024-03-20-1291.
@@ -55,7 +57,7 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
     state_t = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
     for i in tqdm(range(steps), disable = disable_progress_bar):
         superh = csc_array(Super_H(H0 + (sk[i] + 1)*H_enc), dtype = complex)
-        state_t[i] = Lindblad_Propagator(superh, superd, δt, state).reshape(2**Nq, 2**Nq)
+        state_t[i] = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore).reshape(2**Nq, 2**Nq)
         state = state_t[i]
 
     return state_t
@@ -113,3 +115,35 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
     ridge.fit((x_train), y_target)
 
     return ridge, x_train, rhot[-1]
+
+def echo_state_property(sk: np.ndarray, H_enc: np.ndarray | csc_array | csc_matrix, H0: np.ndarray | csc_array | csc_matrix, cops: list, dt: int, wo: int, disable_progress_bar = False):
+    """
+    Verifies the washout time of the reservoir in the Continous Dissipation model.
+
+    Args:
+    ----------
+        sk : np.ndarray
+            The input data.
+        H1 : np.ndarray | sp.csc_array | sp.csc_matrix
+            Hamiltonian encoding the input
+        H0 : np.ndarray | sp.csc_array | sp.csc_matrix
+            Free Hamiltonian
+        cops : list
+            The list of collapse operators.
+        δt : int
+            The time step.
+        wo : int
+            Wash out time test.
+
+    Returns
+    -------
+        td : np.ndarray
+            The trace distance between two random initialization of the reservoir in time.
+    """
+    Nq = int(np.log2(H0.shape[0]))
+    rho1 = random_qubit(Nq, pure = True, dm = True)
+    rho2 = random_qubit(Nq, pure = True, dm = True)
+    drho = rho1 - rho2
+    drhot = CD_evolution(sk, H_enc, H0, cops, dt, wo, drho, disable_progress_bar, ignore = True)
+    td = trace_distance(drhot)
+    return td

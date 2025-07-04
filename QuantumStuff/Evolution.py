@@ -85,7 +85,7 @@ def interaction(op: np.ndarray | list, J: np.ndarray | list):
     result = np.tensordot(J, np.matmul(op[:,None], op[None,:]),axes = ([ax - 2, ax - 1], [0,1]))
     return result
 
-def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix | None, dt: float, ρ: np.ndarray):
+def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix | None, dt: float, rho: np.ndarray, ignore = False):
     """
     Lindblad propagator for Lindblad equation
     Args:
@@ -96,17 +96,20 @@ def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix
     Returns:
         np.ndarray: Time-evolved density matrix.
     """
-
+    if ignore:
+        pass
+    elif not is_state(rho)[1]:
+        raise ValueError("Input must be a valid quantum state.")
     if SD == None:
         SD = csc_array(np.zeros_like(SH.toarray()))
     L = SH + SD
     is_sparse = type(L) == csc_matrix or csc_array
-    if ρ.ndim != 1:
-        ρ = ρ.flatten()
+    if rho.ndim != 1:
+        rho = rho.flatten()
     if is_sparse:
-        return expm_multiply(L, ρ, start = 0 , stop = dt, num = 2)[-1]
+        return expm_multiply(L, rho, start = 0 , stop = dt, num = 2)[-1]
     else:
-        return expm(L * dt) @ ρ
+        return expm(L * dt) @ rho
 
 def Liouvillian(t: float, state: np.ndarray, H: np.ndarray, c_ops: list |np.ndarray):
     """
