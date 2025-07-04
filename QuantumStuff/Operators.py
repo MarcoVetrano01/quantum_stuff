@@ -1,5 +1,5 @@
 import numpy as np
-from .utils import is_state, tensor_product, ket_to_dm, ptrace
+from .utils import is_state, tensor_product, ket_to_dm, ptrace, nqubit
 from itertools import combinations
 from scipy.sparse import csc_array, kron, csc_matrix
 
@@ -96,57 +96,49 @@ def local_operators(operator: np.ndarray | csc_array | csc_matrix, N: int):
     
     return result
 
-def measure(rho: np.ndarray | list, op: np.ndarray | list):
+def measure(states: list | np.ndarray, operators: list, indices_list: list):
     """
-    Measure the expectation value of an operator or a list of operators on a quantum state or a list of quantum states.
-    If the operators have live in in a Hilbert space of higher dimension of the state, the function will return the expectation value
-    for all the combinations of the state and the operator.
-    Parameters
-    Args:
-        rho (np.ndarray | list): The quantum state or density matrix to measure.
-        op (np.ndarray | list): The operator to measure.
-    Returns:
-        np.ndarray: The expectation value of the operator on the quantum state or density matrix.
-                    The shape of the output is (n_states, ncomb, n_ops) where n_comb is the number of measurements
-                    i can perform with an operator acting on a Hilbert space smaller than that of the state.
-    """
+    Measure a list of quantum states with a list of operators on multiple sets of indices.
 
-    if not is_state(rho)[1]:
+    Args:
+        states (list of np.ndarray): List of density matrices representing quantum states.
+        operators (list of np.ndarray): List of operators to measure.
+        indices_list (list of list of list of int): 
+            For each operator, a list of index sets where the operator acts.
+            Example: [ [[0], [1], [2]], [[0,1]], ... ]
+        partial_trace_fn (function): Function that takes (states, indices_to_keep)
+                                     and returns the reduced density matrices.
+
+    Returns:
+        np.array: For each operator, a list of lists of measurement results (one list per index set).
+              Shape: [operator][index_set][state]
+    """
+    
+    if not is_state(states)[1]:
         raise ValueError("Input must be a quantum state or a list of quantum states.")
-    if not (isinstance(op, (np.ndarray, list)) and isinstance(rho, (np.ndarray, list))):
-        raise TypeError("Both ρ and op must be either numpy arrays or lists.")
+    states = ket_to_dm(states)
+    print(states.shape)
+    if not isinstance(operators, list) or not all(isinstance(op, np.ndarray) for op in operators):
+        raise ValueError("Operators must be a list of numpy arrays.")
+    if not isinstance(indices_list, list) or not all(isinstance(indices, list) for indices in indices_list):
+        raise ValueError("Indices list must be a list of lists of indices.")
+    if len(operators) != len(indices_list):
+        raise ValueError("Operators and indices_list must have the same length.")
     
-    rho = np.asarray(rho, dtype = complex)
-    if rho.ndim == 1 or (rho.shape[0] != rho.shape[1] and rho.ndim == 2):
-        rho = ket_to_dm(rho)
-        
-    op = np.asarray(op, dtype = complex)
-    if op.ndim == 3:
-        nop = op.shape[0]
-    else:
-        nop = 1
-        op = op[np.newaxis,:]
-    
-    if rho.ndim == 3:
-        nstates = rho.shape[0]
-    else:
-        nstates = 1
-        rho = rho[np.newaxis]
-    nq = int(np.log2(op.shape[1]))
-    nq_rho = int(np.log2(rho.shape[1]))
-    
-    if nq != nq_rho:
-        combs = list(combinations(range(nq_rho), nq))
-        ncombs = len(combs)
-        rhos = np.zeros((nstates, ncombs, 2**nq, 2**nq), dtype = complex)
-        for i, c in enumerate(combs):
-            rhos[:, i] = ptrace(rho, list(c))
-    else:
-        ncombs = 1
-        rhos = rho[np.newaxis]
-    rhos = rhos[np.newaxis]
-    op = op[:,np.newaxis, np.newaxis]
-    return np.transpose(np.linalg.trace(op @ rhos), (1,0,2))
+    for i in range(len(indices_list)):
+        if len(indices_list[i]) == 0:
+            nq = nqubit(operators[i])
+            nrho = nqubit(states)
+            indices_list[i] = combinations(range(nrho), nq)
+    all_measurements = []
+
+    for operator, list_of_index_groups in zip(operators, indices_list):
+        for indices in list_of_index_groups:
+            reduced_states = ptrace(states, indices)
+            exp_vals = [np.linalg.trace(state @ operator).real for state in reduced_states]
+            all_measurements.append(exp_vals)
+
+    return np.array(all_measurements).T
 
 def sigmap():
     '''
