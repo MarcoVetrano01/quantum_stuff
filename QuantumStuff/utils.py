@@ -101,8 +101,10 @@ def is_state(state: np.ndarray | list):
             raise Exception("State must be a square matrix or a list of square matrices.")
 
         check1 = np.all(np.isclose(np.linalg.trace(state), 1))
-        eigs = np.linalg.eigvalsh(state) >= 0 
-        check2 = np.all(np.linalg.eigvals(state) + np.isclose(eigs, 0))
+        eigs = np.linalg.eigvalsh(state)
+        tol = 1e-10
+        eigs[np.abs(eigs) < tol] = 0
+        check2 = np.all(eigs>= 0)
         check3 = np.allclose(dag(state),state)
         if category == 0:
             category = 3
