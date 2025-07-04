@@ -24,7 +24,7 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-test.ipynb_checkpoints
+test.ipynb
 ./Old
 MANIFEST
 
