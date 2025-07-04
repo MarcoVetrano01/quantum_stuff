@@ -117,7 +117,6 @@ def measure(states: list | np.ndarray, operators: list, indices_list: list):
     if not is_state(states)[1]:
         raise ValueError("Input must be a quantum state or a list of quantum states.")
     states = ket_to_dm(states)
-    print(states.shape)
     if not isinstance(operators, list) or not all(isinstance(op, np.ndarray) for op in operators):
         raise ValueError("Operators must be a list of numpy arrays.")
     if not isinstance(indices_list, list) or not all(isinstance(indices, list) for indices in indices_list):

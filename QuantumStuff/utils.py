@@ -105,7 +105,7 @@ def is_state(state: np.ndarray | list):
         tol = 1e-10
         eigs[np.abs(eigs) < tol] = 0
         check2 = np.all(eigs>= 0)
-        check3 = np.allclose(dag(state),state)
+        check3 = is_herm(state)
         if category == 0:
             category = 3
         return category, (check1 and check2 and check3)
