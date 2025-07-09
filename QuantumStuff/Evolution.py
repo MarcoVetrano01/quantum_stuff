@@ -194,7 +194,7 @@ def Super_H(H: np.ndarray | csc_matrix | csc_array):
     N = np.shape(H)[0]
     if is_sparse:
         SI = csc_matrix(np.eye(N))
-        superh = 1j * (kron(SI, H.T) - kron(H, SI))
+        superh = -1j * (kron(SI, H) - kron(H.T, SI))
         superh = csc_matrix(superh)
     else:
         H = np.array(H, dtype = complex)
