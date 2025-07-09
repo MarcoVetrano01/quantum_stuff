@@ -199,5 +199,5 @@ def Super_H(H: np.ndarray | csc_matrix | csc_array):
     else:
         H = np.array(H, dtype = complex)
         SI = np.eye(N)
-        superh = 1j * (np.kron(SI, H.T) - np.kron(H, SI))
+        superh = -1j * (np.kron(SI, H.T) - np.kron(H, SI))
     return superh
