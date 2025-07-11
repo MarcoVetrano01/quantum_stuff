@@ -149,6 +149,26 @@ def nqubit(op: np.ndarray | list) -> int:
     
     return int(np.log2(op.shape[1])) if isinstance(op, (np.ndarray, (list, np.array))) else 0
 
+def operator2vector(state: np.ndarray | list):
+    """
+    Vectorizes a quantum state (density matrix).
+    Args:
+        state (np.ndarray | list): The quantum state to be vectorized.
+    Returns:
+        np.ndarray: The vectorized form of the quantum state.
+    """
+    if not isinstance(state, (np.ndarray, list)):
+        raise TypeError("Input must be a numpy array or a list of arrays.")
+    is_list_of_state = len(np.shape(state)) == 3
+    state = np.asarray(state, dtype=complex)
+    N = nqubit(state)
+    state = ket_to_dm(state)
+    if is_list_of_state:
+        state = np.array([state[i].ravel('F') for i in range(len(state))])
+    else:
+        state = state.ravel('F')
+    return state.ravel('F')
+
 def ptrace(rho: np.ndarray | list, index: list):
     """
     Partial trace of a density matrix rho. The specified indeces are left untraced.
@@ -207,3 +227,19 @@ def tensor_product(operators: list):
         return(reduce(kron, operators))
     else:
         return reduce(np.kron, operators)
+
+def vector2operator(state: np.ndarray | list):
+    """
+    Converts a vectorized quantum state back to its operator form.
+    Args:
+        state (np.ndarray | list): The vectorized quantum state.
+    Returns:
+        np.ndarray: The operator form of the quantum state.
+    """
+    if not isinstance(state, (np.ndarray, list)):
+        raise TypeError("Input must be a numpy array or a list of arrays.")
+    
+    state = np.asarray(state, dtype=complex)
+    N = int(0.5*np.log2(len(state)))
+    
+    return state.reshape((2**N,2**N), order='F')

@@ -57,8 +57,7 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
     state_t = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
     for i in tqdm(range(steps), disable = disable_progress_bar):
         superh = csc_array(Super_H(H0 + (sk[i] + 1)*H_enc), dtype = complex)
-        state_t[i] = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore).reshape(2**Nq, 2**Nq)
-        state = state_t[i]
+        state_t[i] = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
 
     return state_t
 
