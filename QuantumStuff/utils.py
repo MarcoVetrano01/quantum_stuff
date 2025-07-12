@@ -102,7 +102,7 @@ def is_state(state: np.ndarray | list):
 
         check1 = np.all(np.isclose(np.linalg.trace(state), 1))
         eigs = np.linalg.eigvalsh(state)
-        tol = 1e-10
+        tol = 1e-8
         eigs[np.abs(eigs) < tol] = 0
         check2 = np.all(eigs>= 0)
         check3 = is_herm(state)
@@ -164,10 +164,10 @@ def operator2vector(state: np.ndarray | list):
     N = nqubit(state)
     state = ket_to_dm(state)
     if is_list_of_state:
-        state = np.array([state[i].ravel('F') for i in range(len(state))])
+        state = np.array([state[i].ravel('F').reshape((4**N, 1)) for i in range(len(state))])
     else:
-        state = state.ravel('F')
-    return state.ravel('F')
+        state = state.ravel('F').reshape((4**N, 1))
+    return state.ravel('F').reshape((4**N, 1))
 
 def ptrace(rho: np.ndarray | list, index: list):
     """

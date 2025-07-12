@@ -1,12 +1,13 @@
 from scipy.integrate import solve_ivp
 import numpy as np
-from .utils import is_state, is_herm, dag, ket_to_dm
+from .utils import is_state, is_herm, dag, ket_to_dm, operator2vector, vector2operator
 from .Operators import anticommutator, commutator
 from .States import zero
 from scipy.sparse.linalg import expm_multiply
 from scipy.sparse import csc_matrix, csc_array, kron
 from scipy.linalg import expm
 from tqdm import tqdm
+
 
 def dissipator(state: np.ndarray, L: np.ndarray | list):
     """
@@ -105,9 +106,9 @@ def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix
     L = SH + SD
     is_sparse = type(L) == csc_matrix or csc_array
     if rho.ndim != 1:
-        rho = rho.flatten()
+        rho = operator2vector(rho)
     if is_sparse:
-        return expm_multiply(L, rho, start = 0 , stop = dt, num = 2)[-1]
+        return vector2operator(expm_multiply(L, rho, start = 0 , stop = dt, num = 2)[-1])
     else:
         return expm(L * dt) @ rho
 
@@ -173,7 +174,7 @@ def Super_D(c_ops = []):
         superd = csc_array((N2, N2), dtype=complex)
         for c in c_ops:
             LL = dag(c).dot(c)
-            superd += (kron(c.conj(), c) - 0.5 * (kron(SI, LL) + kron(LL.T, SI)))
+            superd += (kron(c, c.conj()) - 0.5 * (kron(SI, LL.T) + kron(LL, SI)))
             superd = csc_array(superd)
     else:
         SI = np.eye(N)
@@ -181,7 +182,7 @@ def Super_D(c_ops = []):
         
         for c in c_ops:
             LL = dag(c)@c
-            superd += (np.kron(c.conj(), c)-0.5*(np.kron(SI,LL) + np.kron(LL, SI)))
+            superd += (kron(c, c.conj()) - 0.5 * (np.kron(SI, LL.T) + np.kron(LL, SI)))
     return superd
 
 def Super_H(H: np.ndarray | csc_matrix | csc_array):
@@ -199,5 +200,5 @@ def Super_H(H: np.ndarray | csc_matrix | csc_array):
     else:
         H = np.array(H, dtype = complex)
         SI = np.eye(N)
-        superh = -1j * (np.kron(SI, H.T) - np.kron(H, SI))
+        superh = -1j * (kron(SI, H) - kron(H.T, SI))
     return superh

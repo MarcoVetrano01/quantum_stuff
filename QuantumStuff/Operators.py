@@ -123,7 +123,8 @@ def measure(states: list | np.ndarray, operators: list, indices_list: list):
         raise ValueError("Indices list must be a list of lists of indices.")
     if len(operators) != len(indices_list):
         raise ValueError("Operators and indices_list must have the same length.")
-    
+    if len(np.shape(states)) == 2:
+        states = states[np.newaxis]
     for i in range(len(indices_list)):
         if len(indices_list[i]) == 0:
             nq = nqubit(operators[i])
@@ -134,7 +135,7 @@ def measure(states: list | np.ndarray, operators: list, indices_list: list):
     for operator, list_of_index_groups in zip(operators, indices_list):
         for indices in list_of_index_groups:
             reduced_states = ptrace(states, indices)
-            exp_vals = [np.linalg.trace(state @ operator).real for state in reduced_states]
+            exp_vals = [np.linalg.trace(state @ operator) for state in reduced_states]
             all_measurements.append(exp_vals)
 
     return np.array(all_measurements).T
