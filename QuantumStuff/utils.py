@@ -153,7 +153,7 @@ def operator2vector(state: np.ndarray | list):
     """
     Vectorizes a quantum state (density matrix).
     Args:
-        state (np.ndarray | list): The quantum state to be vectorized.
+        state (np.ndarray | list): The quantum state to be vectorized in density matrix form.
     Returns:
         np.ndarray: The vectorized form of the quantum state.
     """
@@ -162,7 +162,7 @@ def operator2vector(state: np.ndarray | list):
     is_list_of_state = len(np.shape(state)) == 3
     state = np.asarray(state, dtype=complex)
     N = nqubit(state)
-    state = ket_to_dm(state)
+    
     if is_list_of_state:
         state = np.array([state[i].ravel('F').reshape((4**N, 1)) for i in range(len(state))])
     else:
