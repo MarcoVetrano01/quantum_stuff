@@ -37,16 +37,19 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         raise TypeError("sk must be a numpy array or a list")
     sk = np.asarray(sk, dtype = float)
     if not (is_herm(H_enc) and is_herm(H0)):
-        raise TypeError("H0 and H_enc must be Hermitian matrices")
+       raise TypeError("H0 and H_enc must be Hermitian matrices")
     if not isinstance(c_ops, list):
         raise TypeError("c_ops must be a list of numpy arrays or csc_matrix")
     if not isinstance(δt, (int, float)):
         raise TypeError("δt must be an integer or a float")
-    if (not isinstance(steps, int)) or steps <= 0 or len(sk) < steps:
+    if (not isinstance(steps, int)) or steps <= 0 or sk.shape[1] < steps:
         raise ValueError("Steps must be a positive integer, whose length is less than or equal to the length of sk")
     if not all(isinstance(c, (np.ndarray, csc_matrix, csc_array)) for c in c_ops):
         raise TypeError("All collapse operators in c_ops must be numpy arrays, csc_matrix, or csc_array")
-    
+    if len(np.shape(sk)) == 1:
+        sk = sk.reshape(1, len(sk))
+    if len(H_enc.shape) == 2:
+        H_enc = [H_enc]
     Nq = int(np.log2(H0.shape[0]))
     if len(c_ops) != 0:
         superd = csc_array(Super_D(c_ops), dtype = complex)
@@ -56,8 +59,13 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         state = zero(dm = True, N = Nq)
     state_t = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
     for i in tqdm(range(steps), disable = disable_progress_bar):
-        superh = csc_array(Super_H(H0 + (sk[i] + 1)*H_enc), dtype = complex)
-        state_t[i] = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
+        superh = 0
+        for k in range(len(H_enc)):
+            superh += Super_H((1+sk[k][i])*H_enc[k])
+        superh += Super_H(H0)
+        superh = csc_array(superh, dtype = complex)
+        state = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
+        state_t[i] = state
 
     return state_t
 
@@ -101,7 +109,7 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
     if not (is_herm(H0) or is_herm(H_enc)):
         raise ValueError("H0 and H1 must be a Hermitian matrix.")
     
-    y_target = np.array(y_target)
+    y_target = np.array(y_target)[wo:wo + train_size]
     sk = np.array(sk)
     rho = np.array(rho)
 
@@ -111,7 +119,7 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
     alpha = np.logspace(-9,3,1000)
     ridge = LM.RidgeCV(alphas = alpha.tolist())
     #For forecasting problems y_target = sk[wo+1:wo+train_size+1]
-    ridge.fit((x_train), y_target)
+    ridge.fit((np.real(x_train)), y_target)
 
     return ridge, x_train, rhot[-1]
 

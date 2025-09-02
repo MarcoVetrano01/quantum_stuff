@@ -4,6 +4,7 @@ from itertools import combinations
 import string
 import random
 from scipy.sparse import csc_array, csc_matrix, kron
+import itertools
 
 def dag(op: np.ndarray | list | csc_array | csc_matrix):
     """
@@ -168,6 +169,44 @@ def operator2vector(state: np.ndarray | list):
     else:
         state = state.ravel('F').reshape((4**N, 1))
     return state.ravel('F').reshape((4**N, 1))
+
+def pauli_basis(N, normalized=True):
+    """
+    Build the full N-qubit Pauli basis.
+
+    Args:
+        N (int): Number of qubits
+        normalized (bool): If True, returns orthonormal basis w.r.t. Hilbert–Schmidt inner product
+
+    Returns:
+        basis (list of np.ndarray): List of 2^N x 2^N matrices forming the basis
+        labels (list of str): Corresponding Pauli string labels
+    """
+    # Single-qubit Paulis
+    I = np.array([[1, 0], [0, 1]], dtype=complex)
+    X = np.array([[0, 1], [1, 0]], dtype=complex)
+    Y = np.array([[0, -1j], [1j, 0]], dtype=complex)
+    Z = np.array([[1, 0], [0, -1]], dtype=complex)
+
+    paulis = [I, X, Y, Z]
+    labels_single = ["I", "X", "Y", "Z"]
+
+    basis = []
+    labels = []
+
+    # Cartesian product of N choices from {I,X,Y,Z}
+    for prod in itertools.product(range(4), repeat=N):
+        mat = paulis[prod[0]]
+        label = labels_single[prod[0]]
+        for idx in prod[1:]:
+            mat = np.kron(mat, paulis[idx])
+            label += labels_single[idx]
+        if normalized:
+            mat = mat / np.sqrt(2**N)  # ensure orthonormality
+        basis.append(mat)
+        labels.append(label)
+
+    return basis, labels
 
 def ptrace(rho: np.ndarray | list, index: list):
     """
