@@ -48,7 +48,7 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         raise TypeError("All collapse operators in c_ops must be numpy arrays, csc_matrix, or csc_array")
     if len(np.shape(sk)) == 1:
         sk = sk.reshape(1, len(sk))
-    if len(H_enc.shape) == 2:
+    if not isinstance(H_enc, list):
         H_enc = [H_enc]
     Nq = int(np.log2(H0.shape[0]))
     if len(c_ops) != 0:
@@ -69,7 +69,7 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
 
     return state_t
 
-def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float, operators: list, meas_ind: list, wo: int = 1000, train_size: int = 1000, rho = None, disable_progress_bar = False):
+def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: list |np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float, operators: list, meas_ind: list, wo: int = 1000, train_size: int = 1000, rho = None, disable_progress_bar = False):
     """ 
     Trains a QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by 
     Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291 . After the evolution of the system
