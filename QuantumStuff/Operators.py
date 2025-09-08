@@ -1,6 +1,7 @@
 import numpy as np
-from .utils import is_state, tensor_product, ket_to_dm, ptrace, nqubit
+from .utils import is_state, tensor_product, ket_to_dm, ptrace, nqubit, dag
 from itertools import combinations
+from scipy.special import comb
 from scipy.sparse import csc_array, kron, csc_matrix
 
 def anticommutator(A: np.ndarray | list, B: np.ndarray | list):
@@ -42,6 +43,32 @@ def commutator(A: np.ndarray | list, B: np.ndarray | list):
     
     return A @ B - B @ A
 
+def expect(state: np.ndarray, op: np.ndarray):
+    """
+    Expectation value of an operator with respect to a quantum state.
+    Args:
+        state (np.ndarray): The quantum state (ket or density matrix).
+        op (np.ndarray): The operator.
+    Returns:
+        float or np.ndarray: The expectation value.
+    """
+
+    l = np.shape(state)
+    if len(l) == 1:
+        return dag(state) @ op @ state
+    else:
+        is_dm = l[-1] == l[-2]
+        if is_dm:
+            if len(l) == 2:
+                return np.trace(np.matmul(op, state))
+            else:
+                return np.einsum('ijk,kj->i', state, op)
+        else:
+            kets = state
+            bras = np.conjugate(kets).swapaxes(1, 2)
+            state = np.matmul(kets, bras)
+            return np.einsum('ijk,kj->i', state, op)
+
 def haar_random_unitary(n_qubits):
     """
     Generate a Haar random unitary matrix for n_qubits.
@@ -64,6 +91,29 @@ def haar_random_unitary(n_qubits):
     U = Q @ phases
     
     return U
+
+def local_measurements(rho: np.ndarray):
+    """
+    Optimized measurement function for local observables.
+    Args:
+        rho (np.ndarray): The density matrix of the quantum state.
+    Returns:
+        np.ndarray: The measurement results for each qubit.
+    """
+    operators = [sigmax(), sigmay(), sigmaz()]
+    Nq = int(np.log2(rho.shape[1]))
+    shape = rho.shape
+    if len(shape) > 2:
+        dim = shape[0]
+    else:
+        rho = rho[np.newaxis]
+        dim = 1
+    out = np.zeros((dim, Nq, 3), dtype = complex)
+    for i in range(Nq):
+        rho_red = ptrace(rho, [i])
+        for k in range(3):
+            out[:, i, k] = expect(rho_red, operators[k])
+    return out
 
 def local_operators(operator: np.ndarray | csc_array | csc_matrix, N: int):
     """
@@ -189,3 +239,26 @@ def sigmaz():
 
     sz = np.array([[1,0],[0,-1]], dtype = complex)
     return sz
+
+def two_qubits_measurements(ρ: np.ndarray, operators: list):
+    """
+    Optimized function for two-qubit measurements.
+    Args:
+        ρ (np.ndarray): The density matrix of the quantum state. Shape (d,d) or (n,d,d) for n states.
+        operators (list): List of operators to measure. Each operator should be a 4x4 numpy array.
+    Returns:
+        np.ndarray: Measurement results for each pair of qubits and each operator.
+    """
+    Nq = int(np.log2(ρ.shape[1]))
+    shape = ρ.shape
+    if len(shape) > 2:
+        dim = shape[0]
+    else:
+        ρ = ρ[np.newaxis]
+        dim = 1
+    out = np.zeros((dim, int(len(operators)*comb(Nq, 2))), dtype = complex)
+    for i, j in enumerate(combinations(range(Nq),2)):
+        ρ_red = ptrace(ρ, list(j))
+        for k in range(len(operators)):
+            out[:, int(comb(Nq,2)) * k + i] = np.real(np.trace(operators[k]@ρ_red, axis1 = 1, axis2 = 2))
+    return out

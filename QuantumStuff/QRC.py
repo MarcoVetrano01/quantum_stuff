@@ -5,9 +5,13 @@ from .Evolution import Super_H, Super_D, Lindblad_Propagator
 from .States import zero, random_qubit
 from .Metrics import trace_distance
 from .utils import is_herm, is_state, dag
-from .Operators import measure
+from .Operators import measure, local_measurements, two_qubits_measurements, sigmax, sigmay, sigmaz
 import sklearn.linear_model as LM
 
+sx = sigmax()
+sy = sigmay()
+sz = sigmaz()
+tqo = [np.kron(sx, sx), np.kron(sy, sy), np.kron(sz, sz)]
 
 def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float,  steps: int, state = None, disable_progress_bar = False, ignore = False):
     """
@@ -37,16 +41,19 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         raise TypeError("sk must be a numpy array or a list")
     sk = np.asarray(sk, dtype = float)
     if not (is_herm(H_enc) and is_herm(H0)):
-        raise TypeError("H0 and H_enc must be Hermitian matrices")
+       raise TypeError("H0 and H_enc must be Hermitian matrices")
     if not isinstance(c_ops, list):
         raise TypeError("c_ops must be a list of numpy arrays or csc_matrix")
     if not isinstance(δt, (int, float)):
         raise TypeError("δt must be an integer or a float")
-    if (not isinstance(steps, int)) or steps <= 0 or len(sk) < steps:
+    if (not isinstance(steps, int)) or steps <= 0 or sk.shape[1] < steps:
         raise ValueError("Steps must be a positive integer, whose length is less than or equal to the length of sk")
     if not all(isinstance(c, (np.ndarray, csc_matrix, csc_array)) for c in c_ops):
         raise TypeError("All collapse operators in c_ops must be numpy arrays, csc_matrix, or csc_array")
-    
+    if len(np.shape(sk)) == 1:
+        sk = sk.reshape(len(sk),1)
+    if not isinstance(H_enc, list):
+        H_enc = [H_enc]
     Nq = int(np.log2(H0.shape[0]))
     if len(c_ops) != 0:
         superd = csc_array(Super_D(c_ops), dtype = complex)
@@ -55,13 +62,18 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
     if state is None:
         state = zero(dm = True, N = Nq)
     state_t = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
+    
     for i in tqdm(range(steps), disable = disable_progress_bar):
-        superh = csc_array(Super_H(H0 + (sk[i] + 1)*H_enc), dtype = complex)
-        state_t[i] = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
+        H = H0
+        for k in range(len(H_enc)):
+            H += +(1+sk[i][k])*H_enc[k]
+        superh = csc_array(Super_H(H), dtype = complex)
+        state = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
+        state_t[i] = state
 
     return state_t
 
-def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float, operators: list, meas_ind: list, wo: int = 1000, train_size: int = 1000, rho = None, disable_progress_bar = False):
+def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float, operators: list, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, rho = None, disable_progress_bar = False):
     """ 
     Trains a QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by 
     Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291 . After the evolution of the system
@@ -89,7 +101,7 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
     Returns:
         ridge (LM.RidgeCV): The trained Ridge regression model.
         x_train (np.ndarray): The training data after measurement.
-        ρt (np.ndarray): The final state of the system after evolution.
+        rhot (np.ndarray): The final state of the system after evolution.
     """
 
     Nq = int(np.log2(H0.shape[0]))
@@ -106,14 +118,17 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
     rho = np.array(rho)
 
     rhot = CD_evolution(sk, H_enc, H0, c_ops, δt, wo + train_size, rho, disable_progress_bar)
-    x_train = np.real(measure(rhot[wo:], operators, meas_ind))
-
+    if meas_ind is not None:
+        x_train = np.real(measure(rhot[wo:], operators, meas_ind))
+    else:
+        x_train = np.hstack((local_measurements(rhot[wo:]).reshape(train_size, 3*Nq), two_qubits_measurements(rhot[wo:], tqo), np.ones((train_size, 1))))
     alpha = np.logspace(-9,3,1000)
     ridge = LM.RidgeCV(alphas = alpha.tolist())
     #For forecasting problems y_target = sk[wo+1:wo+train_size+1]
     ridge.fit((x_train), y_target)
 
     return ridge, x_train, rhot[-1]
+
 def echo_state_property(sk: np.ndarray, H_enc: np.ndarray | csc_array | csc_matrix, H0: np.ndarray | csc_array | csc_matrix, cops: list, dt: int, wo: int, disable_progress_bar = False):
     """
     Verifies the washout time of the reservoir in the Continous Dissipation model.

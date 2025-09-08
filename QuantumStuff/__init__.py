@@ -1,5 +1,5 @@
 from .utils import is_herm, is_state, dag, is_norm, tensor_product, ptrace, ket_to_dm, nqubit, operator2vector, vector2operator
-from .Operators import sigmax, sigmay, sigmaz, sigmam, sigmap, local_operators, commutator, anticommutator, haar_random_unitary, measure
+from .Operators import sigmax, sigmay, sigmaz, sigmam, sigmap, local_operators, commutator, anticommutator, haar_random_unitary, measure, two_qubits_measurements, local_measurements
 from .States import zero, one, plus, minus, right, left, random_qubit, BlochSpherePlot, bloch_vector
 from .Evolution import Lindblad_Propagator, Super_H, Super_D, dissipator, evolve_lindblad, evolve_unitary, Liouvillian, interaction, random_coupling
 from .Metrics import fidelity, trace_distance, von_neumann_entropy, mutual_info, Holevo_Info, purity
@@ -14,4 +14,4 @@ __all__ = ["is_herm", "is_state", "dag", "is_norm", "tensor_product", "ptrace", 
            "evolve_lindblad", "evolve_unitary", "Liouvillian",
            "interaction", "random_coupling",
            "fidelity", "trace_distance", "von_neumann_entropy",
-           "mutual_info", "Holevo_Info", "purity", "nqubit" "operator2vector", "vector2operator"]
+           "mutual_info", "Holevo_Info", "purity", "nqubit" "operator2vector", "vector2operator", "local_measurements", "two_qubits_measurements"]
