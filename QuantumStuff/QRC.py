@@ -37,19 +37,16 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         raise TypeError("sk must be a numpy array or a list")
     sk = np.asarray(sk, dtype = float)
     if not (is_herm(H_enc) and is_herm(H0)):
-       raise TypeError("H0 and H_enc must be Hermitian matrices")
+        raise TypeError("H0 and H_enc must be Hermitian matrices")
     if not isinstance(c_ops, list):
         raise TypeError("c_ops must be a list of numpy arrays or csc_matrix")
     if not isinstance(δt, (int, float)):
         raise TypeError("δt must be an integer or a float")
-    if (not isinstance(steps, int)) or steps <= 0 or sk.shape[0] < steps:
+    if (not isinstance(steps, int)) or steps <= 0 or len(sk) < steps:
         raise ValueError("Steps must be a positive integer, whose length is less than or equal to the length of sk")
     if not all(isinstance(c, (np.ndarray, csc_matrix, csc_array)) for c in c_ops):
         raise TypeError("All collapse operators in c_ops must be numpy arrays, csc_matrix, or csc_array")
-    if len(np.shape(sk)) == 1:
-        sk = sk.reshape(len(sk),1)
-    if not isinstance(H_enc, list):
-        H_enc = [H_enc]
+    
     Nq = int(np.log2(H0.shape[0]))
     if len(c_ops) != 0:
         superd = csc_array(Super_D(c_ops), dtype = complex)
@@ -59,17 +56,12 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         state = zero(dm = True, N = Nq)
     state_t = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
     for i in tqdm(range(steps), disable = disable_progress_bar):
-        superh = 0
-        for k in range(len(H_enc)):
-            superh += Super_H((1+sk[i][k])*H_enc[k])
-        superh += Super_H(H0)
-        superh = csc_array(superh, dtype = complex)
-        state = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
-        state_t[i] = state
+        superh = csc_array(Super_H(H0 + (sk[i] + 1)*H_enc), dtype = complex)
+        state_t[i] = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
 
     return state_t
 
-def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: list |np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float, operators: list, meas_ind: list = [], wo: int = 1000, train_size: int = 1000, rho = None, epoch = 1, delta = 1e-4,disable_progress_bar = False):
+def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float, operators: list, meas_ind: list, wo: int = 1000, train_size: int = 1000, rho = None, disable_progress_bar = False):
     """ 
     Trains a QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by 
     Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291 . After the evolution of the system
@@ -101,20 +93,6 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: list 
     """
 
     Nq = int(np.log2(H0.shape[0]))
-    try:
-        steps, dim = np.shape(sk)
-    except:
-        steps = len(sk)
-        dim = 1
-        
-    if epoch == 1:
-        sk = sk.reshape(epoch, steps, dim)
-        y_target = y_target.reshape(train_size, dim)
-    else:
-        sk = np.vstack([[sk]]*(epoch))
-        error = np.random.uniform(-delta, delta, sk.shape)
-        sk = sk + error
-    
     if rho is None:
         rho = zero(dm = True, N = Nq)
     else:
@@ -122,24 +100,20 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: list 
             raise ValueError("The provided initial state is not a valid density matrix.")
     if not (is_herm(H0) or is_herm(H_enc)):
         raise ValueError("H0 and H1 must be a Hermitian matrix.")
+    
+    y_target = np.array(y_target)
+    sk = np.array(sk)
+    rho = np.array(rho)
 
-    rhot = np.array([CD_evolution(sk[i], H_enc, H0, c_ops, δt, wo + train_size, rho, disable_progress_bar) for i in range(epoch)])
-    x_train = []
-    if len(meas_ind) == 0:
-        meas_ind = [[] for i in range(len(operators))]
-    for i in range(epoch):
-        ind = meas_ind.copy()
-        x_train.append(measure(rhot[i][wo:], operators, ind)) 
-    x_train = np.array(x_train)
-    predictors = []
-    for i in range(epoch):
-        ridge = LM.RidgeCV(alphas = 1e-7)
-        #For forecasting problems y_target = sk[wo+1:wo+train_size+1]
-        ridge.fit((np.real(x_train[i])), y_target)
-        predictors.append(ridge)
+    rhot = CD_evolution(sk, H_enc, H0, c_ops, δt, wo + train_size, rho, disable_progress_bar)
+    x_train = np.real(measure(rhot[wo:], operators, meas_ind))
 
-    return predictors, x_train, rhot[:,-1]
+    alpha = np.logspace(-9,3,1000)
+    ridge = LM.RidgeCV(alphas = alpha.tolist())
+    #For forecasting problems y_target = sk[wo+1:wo+train_size+1]
+    ridge.fit((x_train), y_target)
 
+    return ridge, x_train, rhot[-1]
 def echo_state_property(sk: np.ndarray, H_enc: np.ndarray | csc_array | csc_matrix, H0: np.ndarray | csc_array | csc_matrix, cops: list, dt: int, wo: int, disable_progress_bar = False):
     """
     Verifies the washout time of the reservoir in the Continous Dissipation model.

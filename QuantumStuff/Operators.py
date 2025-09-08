@@ -140,6 +140,7 @@ def measure(states: list | np.ndarray, operators: list, indices_list: list):
 
     return np.array(all_measurements).T
 
+
 def sigmap():
     '''
     Creates the raising operator (sigma plus) for a qubit.
