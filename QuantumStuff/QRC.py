@@ -46,12 +46,12 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         raise TypeError("c_ops must be a list of numpy arrays or csc_matrix")
     if not isinstance(δt, (int, float)):
         raise TypeError("δt must be an integer or a float")
-    if (not isinstance(steps, int)) or steps <= 0 or sk.shape[1] < steps:
+    if (not isinstance(steps, int)) or steps <= 0 or sk.shape[0] < steps:
         raise ValueError("Steps must be a positive integer, whose length is less than or equal to the length of sk")
     if not all(isinstance(c, (np.ndarray, csc_matrix, csc_array)) for c in c_ops):
         raise TypeError("All collapse operators in c_ops must be numpy arrays, csc_matrix, or csc_array")
-    if len(np.shape(sk)) == 1:
-        sk = sk.reshape(len(sk),1)
+    # if len(np.shape(sk)) == 1:
+    #     sk = sk.reshape(len(sk),1)
     if not isinstance(H_enc, list):
         H_enc = [H_enc]
     Nq = int(np.log2(H0.shape[0]))
@@ -66,14 +66,16 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
     for i in tqdm(range(steps), disable = disable_progress_bar):
         H = H0
         for k in range(len(H_enc)):
-            H += +(1+sk[i][k])*H_enc[k]
+            H += (1+sk[i][k])*H_enc[k]
+        # H += (1+sk[i])*H_enc
+        H = csc_array(H, dtype = complex)
         superh = csc_array(Super_H(H), dtype = complex)
         state = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
         state_t[i] = state
 
     return state_t
 
-def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float, operators: list, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, rho = None, disable_progress_bar = False):
+def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, rho = None, disable_progress_bar = False):
     """ 
     Trains a QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by 
     Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291 . After the evolution of the system
@@ -110,18 +112,25 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
     else:
         if not is_state(rho)[1]:
             raise ValueError("The provided initial state is not a valid density matrix.")
-    if not (is_herm(H0) or is_herm(H_enc)):
-        raise ValueError("H0 and H1 must be a Hermitian matrix.")
-    
-    y_target = np.array(y_target)
+    if len(np.shape(sk)) == 1:
+        sk = sk.reshape((len(sk),1))
+    if len(np.shape(H_enc)) == 2:
+        H_enc = np.array([H_enc])
+    y_target = np.array(y_target).reshape((train_size, np.shape(sk)[1]))
+
     sk = np.array(sk)
     rho = np.array(rho)
 
     rhot = CD_evolution(sk, H_enc, H0, c_ops, δt, wo + train_size, rho, disable_progress_bar)
-    if meas_ind is not None:
-        x_train = np.real(measure(rhot[wo:], operators, meas_ind))
+    if meas_ind is not None or operators is not None:
+        if len(meas_ind) == 0:
+            meas_ind = [[] for i in range(len(operators))]
+        x_train = measure(rhot[wo:], operators, meas_ind)
     else:
-        x_train = np.hstack((local_measurements(rhot[wo:]).reshape(train_size, 3*Nq), two_qubits_measurements(rhot[wo:], tqo), np.ones((train_size, 1))))
+        x_train = np.hstack((local_measurements(rhot[wo:]), two_qubits_measurements(rhot[wo:], tqo), np.ones((train_size, 1))))
+    
+    x_train = np.real(x_train)
+
     alpha = np.logspace(-9,3,1000)
     ridge = LM.RidgeCV(alphas = alpha.tolist())
     #For forecasting problems y_target = sk[wo+1:wo+train_size+1]

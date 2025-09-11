@@ -174,7 +174,7 @@ def Super_D(c_ops = []):
         superd = csc_array((N2, N2), dtype=complex)
         for c in c_ops:
             LL = dag(c).dot(c)
-            superd += (kron(c, c.conj()) - 0.5 * (kron(SI, LL.T) + kron(LL, SI)))
+            superd += (kron(c.conj(), c) - 0.5 * (kron(SI, LL) + kron(LL.T, SI)))
             superd = csc_array(superd)
     else:
         SI = np.eye(N)
@@ -182,7 +182,7 @@ def Super_D(c_ops = []):
         
         for c in c_ops:
             LL = dag(c)@c
-            superd += (kron(c, c.conj()) - 0.5 * (np.kron(SI, LL.T) + np.kron(LL, SI)))
+            superd += (np.kron(c.conj(), c) - 0.5 * (np.kron(SI, LL) + np.kron(LL.T, SI)))
     return superd
 
 def Super_H(H: np.ndarray | csc_matrix | csc_array):

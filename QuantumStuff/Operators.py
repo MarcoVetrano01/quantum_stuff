@@ -109,11 +109,12 @@ def local_measurements(rho: np.ndarray):
         rho = rho[np.newaxis]
         dim = 1
     out = np.zeros((dim, Nq, 3), dtype = complex)
+    out = []
     for i in range(Nq):
         rho_red = ptrace(rho, [i])
-        for k in range(3):
-            out[:, i, k] = expect(rho_red, operators[k])
-    return out
+        for k in range(3):        
+            out.append(expect(rho_red, operators[k]))
+    return np.array(out).T
 
 def local_operators(operator: np.ndarray | csc_array | csc_matrix, N: int):
     """
