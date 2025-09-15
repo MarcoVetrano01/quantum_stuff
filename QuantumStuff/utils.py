@@ -1,3 +1,10 @@
+"""
+Quantum Computing Utility Functions
+
+This module provides essential utility functions for quantum computing operations.
+Functions are organized by functionality for better code navigation.
+"""
+
 import numpy as np
 from functools import reduce
 from itertools import combinations
@@ -6,87 +13,108 @@ import random
 from scipy.sparse import csc_array, csc_matrix, kron
 import itertools
 from scipy.sparse.linalg import norm
+from typing import Union
 
-def dag(op: np.ndarray | list | csc_array | csc_matrix):
+# Type aliases for better code readability
+MatrixLike = Union[np.ndarray, list]
+SparseLike = Union[csc_array, csc_matrix]
+MatrixOrSparse = Union[MatrixLike, SparseLike]
+
+
+# =============================================================================
+# MATRIX OPERATIONS
+# =============================================================================
+
+def dag(op: MatrixOrSparse):
     """
-    Returns the adjoint (or Hermitian conjugate) of a given operator.
+    Returns the adjoint (Hermitian conjugate) of a given operator.
+    
+    Supports dense matrices, sparse matrices, and batches of operators.
+    
     Args:
-        op (np.ndarray): The operator to be adjointed. If op is a list of arrays it is must be in shape (M,N,N)
-        the function will return the adjoint of each operator in the list.
+        op (MatrixOrSparse): The operator to be adjointed.
+            - Single matrix: 2D array or sparse matrix
+            - Batch of matrices: list or 3D array with shape (M,N,N)
     Returns:
-        np.ndarray: The adjoint of the operator.
+        MatrixOrSparse: The adjoint of the operator(s).
     """
     if not isinstance(op, (list, np.ndarray, csc_array, csc_matrix)):
         return Exception("op must be a numpy array or a list of numpy arrays.")
     if isinstance(op, (list, np.ndarray)) and len(op) == 0:
         return Exception("op cannot be empty.")
-    try:
-        shape = len(np.shape(op)) != 2
-        if shape and isinstance(op[0], (np.ndarray, list)):
-            op = np.asarray(op, dtype=complex)
-            sparse = False
-        elif shape and isinstance(op[0], (csc_array, csc_matrix)):
-            op = np.array([a.toarray() for a in op])
-            sparse = True
-    except(ValueError):
-        opdag = [np.conjugate(np.transpose(a)) for a in op]
-        return opdag
-        
-    if shape:
-        shape = np.shape(op)
-
-        if shape[1] != shape[2]:
-            raise Exception("op must be a square matrix or a list of square matrices.")
-        opdag = np.conj(np.transpose(op, (0,2,1)))
-        if sparse:
-            opdag = [csc_array(opdag[i]) for i in range(shape[0])]
-        return opdag
-
-    else:
-        return np.conj(op).T
-
-def is_herm(A: np.ndarray | list | csc_array | csc_matrix):
-    """
-    Check if a matrix is Hermitian.
-    Args:
-        A (np.ndarray or list): The matrix to check.
-    Returns:
-        bool: True if the matrix is Hermitian, False otherwise.
-    """
-    Adag = dag(A)
-    try:
-        shape = len(np.shape(A))
-    except ValueError:
-        isherm = []
-        for i in range(len(A)):
-            if isinstance(A[i], (csc_array, csc_matrix)):
-                A[i] = A[i].toarray()
-                Adag[i] = Adag[i].toarray()
-            isherm.append(np.allclose(A[i], Adag[i]))
-        return isherm
     
-    if not isinstance(A, (np.ndarray,list, csc_array, csc_matrix)):
+    # Handle sparse matrices directly
+    if isinstance(op, (csc_array, csc_matrix)):
+        return op.conj().T
+    
+    # Handle lists
+    if isinstance(op, list):
+        return [np.conj(a).T if isinstance(a, (np.ndarray, csc_array, csc_matrix)) else np.conj(np.asarray(a)).T for a in op]
+    
+    # Handle numpy arrays
+    if len(op.shape) == 2:
+        return np.conj(op).T
+    elif len(op.shape) == 3:
+        # 3D array: batch of matrices
+        if op.shape[1] != op.shape[2]:
+            raise Exception("op must be a square matrix or a list of square matrices.")
+        return np.conj(np.transpose(op, (0, 2, 1)))
+    else:
+        raise Exception("op must be a 2D or 3D array, or a list.")
+
+def is_herm(A: MatrixOrSparse):
+    """
+    Check if a matrix (or batch of matrices) is Hermitian.
+    
+    A matrix is Hermitian if A = A† (equals its conjugate transpose).
+    
+    Args:
+        A (MatrixOrSparse): The matrix/matrices to check.
+    Returns:
+        bool | list: True if Hermitian, False otherwise. For batches, returns list of bools.
+    """
+    if not isinstance(A, (np.ndarray, list, csc_array, csc_matrix)):
         raise TypeError("Input must be a numpy array, a list of arrays or a list of csc_matrices.")
     
-    if shape != 2:
-        isherm =[]
-        for i in range(len(A)):
-            if isinstance(A[i], (csc_array, csc_matrix)):
-                A[i] = A[i].toarray()
-                Adag[i] = Adag[i].toarray()
-            isherm.append(np.allclose(A[i], Adag[i]))
-        return isherm
+    # Handle single sparse matrix
+    if isinstance(A, (csc_array, csc_matrix)):
+        return np.allclose(A.toarray(), A.conj().T.toarray())
+    
+    # Handle list of matrices
+    if isinstance(A, list):
+        result = []
+        for matrix in A:
+            if isinstance(matrix, (csc_array, csc_matrix)):
+                result.append(np.allclose(matrix.toarray(), matrix.conj().T.toarray()))
+            else:
+                matrix = np.asarray(matrix, dtype=complex)
+                result.append(np.allclose(matrix, matrix.conj().T))
+        return result
+    
+    # Handle numpy arrays
+    A = np.asarray(A, dtype=complex)
+    if len(A.shape) == 2:
+        # Single matrix
+        return np.allclose(A, A.conj().T)
+    elif len(A.shape) == 3:
+        # Batch of matrices
+        return [np.allclose(A[i], A[i].conj().T) for i in range(A.shape[0])]
     else:
-        return(np.allclose(A, dag(A)))
+        raise ValueError("Input must be a 2D matrix or 3D array of matrices.")
 
-def is_norm(A: np.ndarray | list | csc_array | csc_matrix):
+
+# =============================================================================
+# STATE VALIDATION
+# =============================================================================
+
+def is_norm(A: MatrixOrSparse):
     """
-    Check if a vector or matrix is normalized.
+    Check if a vector or matrix (or batch) is normalized (has unit norm).
+    
     Args:
-        A (np.ndarray): The vector or matrix to check.
-        ax (tuple): Axis along which to compute the norm.
+        A (MatrixOrSparse): The vector(s)/matrix(es) to check.
     Returns:
-        bool: True if the vector or matrix is normalized, otherwise it returns the indices of the non-normalized vectors/matrices.
+        bool | np.ndarray: True if all normalized, otherwise array indicating which are not.
     """
     if not isinstance(A, (np.ndarray, list, csc_array, csc_matrix)):
         raise TypeError("Input must be a numpy array, a list of arrays, a csc_array or a list of csc_arrays.")
@@ -109,15 +137,21 @@ def is_norm(A: np.ndarray | list | csc_array | csc_matrix):
     
     
 
-def is_state(state: np.ndarray | list):
+def is_state(state: MatrixLike):
     """
-    Checks if a given state is a valid quantum state and tells whether it is a ket (category 1), a dm (category 2) or a list of state (kets or dms, category 3)
+    Checks if a given state is a valid quantum state and categorizes it.
+    
+    Categories:
+    - Category 1: Single ket (normalized vector)  
+    - Category 2: Batch of kets (converted to density matrices)
+    - Category 3: Density matrices (single or batch)
+    
     Args:
-        state (np.ndarray): The quantum state to be checked.
+        state (MatrixLike): The quantum state(s) to be checked.
     Returns:
         tuple: (category, is_valid)
-            category (int): 1 for ket, 2 for density matrix, 3 for list of states.
-            is_valid (bool or list): True if the states are all valid, False otherwise. If category is 3, it returns either True or a list of indices of invalid states.
+            - category (int): 1 for ket, 2 for batch of kets, 3 for density matrices
+            - is_valid (bool | list): True if all valid, or validity indicators for invalid states
     """
     if not isinstance(state, (list, np.ndarray)):
         raise Exception("State must be a numpy array or a list of numpy arrays.")
@@ -165,13 +199,18 @@ def is_state(state: np.ndarray | list):
         if category == 0:
             category = 3
         return category, (check1 and check2 and check3)
+
+
+# =============================================================================
+# STATE CONVERSION
+# =============================================================================
     
-def ket_to_dm(state: np.ndarray | list) -> np.ndarray:
+def ket_to_dm(state: MatrixLike) -> np.ndarray:
     """
     Convert a ket to a density matrix.
     
     Args:
-        state (np.ndarray | list): The quantum state in ket form.
+        state (MatrixLike): The quantum state in ket form.
         
     Returns:
         np.ndarray: The corresponding density matrix.
@@ -192,14 +231,65 @@ def ket_to_dm(state: np.ndarray | list) -> np.ndarray:
         return np.outer(state[0], state[0].conj())
     else:
         return np.einsum('ni,nj->nij', state, state.conj())
-    
-def nqubit(op: np.ndarray | list) -> int:
+
+
+def operator2vector(state: MatrixLike):
     """
-    Returns the number of qubits in a given density matrix.
+    Vectorizes a quantum state (density matrix).
     Args:
-        op (np.ndarray | list): The density matrix to check.
+        state (MatrixLike): The quantum state to be vectorized in density matrix form.
     Returns:
-        int: The number of qubits in the density matrix."""
+        np.ndarray: The vectorized form of the quantum state.
+    """
+    if not isinstance(state, (np.ndarray, list)):
+        raise TypeError("Input must be a numpy array or a list of arrays.")
+    is_list_of_state = len(np.shape(state)) == 3
+    state = np.asarray(state, dtype=complex)
+    shape = np.shape(state)[1]
+    if is_list_of_state:
+        state = np.array([state[i].ravel('F').reshape((2*shape, 1)) for i in range(len(state))])
+    else:
+        state = state.ravel('F').reshape((2*shape, 1))
+    return state
+
+
+def vector2operator(state: MatrixLike):
+    """
+    Converts a vectorized quantum state back to its operator form.
+    Args:
+        state (MatrixLike): The vectorized quantum state.
+    Returns:
+        np.ndarray: The operator form of the quantum state.
+    """
+    if not isinstance(state, (np.ndarray, list)):
+        raise TypeError("Input must be a numpy array or a list of arrays.")
+    
+    state = np.asarray(state, dtype=complex)
+    is_list_of_state = len(np.shape(state)) == 3
+    if is_list_of_state:
+        N = int(0.5*np.log2(np.shape(state)[1]))
+        state = np.array([state[i].reshape((2**N, 2**N), order = 'F') for i in range(len(state))])
+    else:
+        N = int(0.5*np.log2(np.shape(state)[0]))
+        state = state.reshape((2**N,2**N), order='F')
+    return state
+
+
+# =============================================================================
+# QUANTUM OPERATIONS
+# =============================================================================
+    
+def nqubit(op: MatrixLike) -> int:
+    """
+    Returns the number of qubits in a given quantum operator.
+    
+    Determines the number of qubits from the operator dimension: 2^N × 2^N.
+    
+    Args:
+        op (MatrixLike): The quantum operator (density matrix or state).
+    Returns:
+        int: The number of qubits in the system.
+    """
     if not isinstance(op, (np.ndarray, list)):
         raise TypeError("Input must be a numpy array or a list of arrays.")
     op = np.asarray(op, dtype=complex)
@@ -265,12 +355,27 @@ def pauli_basis(N, normalized=True):
 
     return basis, labels
 
-def ptrace(rho: np.ndarray | list, index: list):
+
+def tensor_product(operators: list):
+    """
+    Computes the tensor product of a list of operators.
+    Args:
+        operators (list): A list of operators (numpy arrays) to be tensor multiplied.
+    Returns:
+        np.ndarray: The resulting tensor product of the operators.
+    """
+    if isinstance(operators[0], (csc_array, csc_matrix)):
+        return(reduce(kron, operators))
+    else:
+        return reduce(np.kron, operators)
+
+
+def ptrace(rho: MatrixLike, index: list):
     """
     Partial trace of a density matrix rho. The specified indeces are left untraced.
     The remaining indices are traced out.
     Args:
-        rho (np.ndarray | list): The density matrix to be traced.
+        rho (MatrixLike): The density matrix to be traced.
         index (list): List of indices to keep untraced.
     Returns:
         np.ndarray: The resulting density matrix after partial trace.
@@ -310,37 +415,3 @@ def ptrace(rho: np.ndarray | list, index: list):
     stringa = ''.join(stringa)
     rho = np.einsum(stringa+'->'+out, rho.reshape(new_shape)).reshape(shape1)
     return rho
-
-def tensor_product(operators: list):
-    """
-    Computes the tensor product of a list of operators.
-    Args:
-        operators (list): A list of operators (numpy arrays) to be tensor multiplied.
-    Returns:
-        np.ndarray: The resulting tensor product of the operators.
-    """
-    if isinstance(operators[0], (csc_array, csc_matrix)):
-        return(reduce(kron, operators))
-    else:
-        return reduce(np.kron, operators)
-
-def vector2operator(state: np.ndarray | list):
-    """
-    Converts a vectorized quantum state back to its operator form.
-    Args:
-        state (np.ndarray | list): The vectorized quantum state.
-    Returns:
-        np.ndarray: The operator form of the quantum state.
-    """
-    if not isinstance(state, (np.ndarray, list)):
-        raise TypeError("Input must be a numpy array or a list of arrays.")
-    
-    state = np.asarray(state, dtype=complex)
-    is_list_of_state = len(np.shape(state)) == 3
-    if is_list_of_state:
-        N = int(0.5*np.log2(np.shape(state)[1]))
-        state = np.array([state[i].reshape((2**N, 2**N), order = 'F') for i in range(len(state))])
-    else:
-        N = int(0.5*np.log2(np.shape(state)[0]))
-        state = state.reshape((2**N,2**N), order='F')
-    return state
