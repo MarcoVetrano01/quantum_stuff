@@ -5,6 +5,7 @@ import string
 import random
 from scipy.sparse import csc_array, csc_matrix, kron
 import itertools
+from scipy.sparse.linalg import norm
 
 def dag(op: np.ndarray | list | csc_array | csc_matrix):
     """
@@ -17,18 +18,30 @@ def dag(op: np.ndarray | list | csc_array | csc_matrix):
     """
     if not isinstance(op, (list, np.ndarray, csc_array, csc_matrix)):
         return Exception("op must be a numpy array or a list of numpy arrays.")
-    if isinstance(op, (list)):
-        op = np.asarray(op, dtype=complex)
-    shape = len(np.shape(op)) > 2
-
+    if isinstance(op, (list, np.ndarray)) and len(op) == 0:
+        return Exception("op cannot be empty.")
+    try:
+        shape = len(np.shape(op)) != 2
+        if shape and isinstance(op[0], (np.ndarray, list)):
+            op = np.asarray(op, dtype=complex)
+            sparse = False
+        elif shape and isinstance(op[0], (csc_array, csc_matrix)):
+            op = np.array([a.toarray() for a in op])
+            sparse = True
+    except(ValueError):
+        opdag = [np.conjugate(np.transpose(a)) for a in op]
+        return opdag
+        
     if shape:
         shape = np.shape(op)
 
         if shape[1] != shape[2]:
             raise Exception("op must be a square matrix or a list of square matrices.")
-        
-        return np.conj(np.transpose(op, (0,2,1)))
-    
+        opdag = np.conj(np.transpose(op, (0,2,1)))
+        if sparse:
+            opdag = [csc_array(opdag[i]) for i in range(shape[0])]
+        return opdag
+
     else:
         return np.conj(op).T
 
@@ -40,51 +53,82 @@ def is_herm(A: np.ndarray | list | csc_array | csc_matrix):
     Returns:
         bool: True if the matrix is Hermitian, False otherwise.
     """
-
+    Adag = dag(A)
+    try:
+        shape = len(np.shape(A))
+    except ValueError:
+        isherm = []
+        for i in range(len(A)):
+            if isinstance(A[i], (csc_array, csc_matrix)):
+                A[i] = A[i].toarray()
+                Adag[i] = Adag[i].toarray()
+            isherm.append(np.allclose(A[i], Adag[i]))
+        return isherm
+    
     if not isinstance(A, (np.ndarray,list, csc_array, csc_matrix)):
         raise TypeError("Input must be a numpy array, a list of arrays or a list of csc_matrices.")
-    if isinstance(A, (csc_array, csc_matrix)):
-        B = A.toarray()
-    elif isinstance(A, list) and isinstance(A[0], (csc_array, csc_matrix)):
-        B = [a.toarray() for a in A]
+    
+    if shape != 2:
+        isherm =[]
+        for i in range(len(A)):
+            if isinstance(A[i], (csc_array, csc_matrix)):
+                A[i] = A[i].toarray()
+                Adag[i] = Adag[i].toarray()
+            isherm.append(np.allclose(A[i], Adag[i]))
+        return isherm
     else:
-        B = A
-    B = np.asarray(B, dtype=complex)
-    return(np.allclose(B, dag(B)))
+        return(np.allclose(A, dag(A)))
 
-def is_norm(A: np.ndarray | list):
+def is_norm(A: np.ndarray | list | csc_array | csc_matrix):
     """
     Check if a vector or matrix is normalized.
     Args:
         A (np.ndarray): The vector or matrix to check.
         ax (tuple): Axis along which to compute the norm.
     Returns:
-        bool: True if the vector or matrix is normalized, False otherwise.
+        bool: True if the vector or matrix is normalized, otherwise it returns the indices of the non-normalized vectors/matrices.
     """
-    if not isinstance(A, (np.ndarray, list)):
-        raise TypeError("Input must be a numpy array or a list of arrays.")
-    
-    category = is_state(A)[0]
-    if category == 1:
-        return np.isclose(np.linalg.norm(A), 1)
-    elif category == 2:
-        A = np.asarray(A, dtype=complex)
-        return np.all(np.isclose(np.linalg.norm(A, axis = 1), 1))
+    if not isinstance(A, (np.ndarray, list, csc_array, csc_matrix)):
+        raise TypeError("Input must be a numpy array, a list of arrays, a csc_array or a list of csc_arrays.")
+    check_type = isinstance(A, (list, np.ndarray))
+    check_csr = isinstance(A, (csc_array, csc_matrix))
+    if check_type and np.shape(A[0]) == ():
+        check = np.isclose(np.linalg.norm(A), 1)
+        return check
+    if check_csr:
+        check = np.isclose(norm(A), 1)
+        return check
+    if check_type and isinstance(A[0], (csc_array, csc_matrix)):
+        check = np.array([np.isclose(norm(A[i]), 1) for i in range(len(A))])
+    elif check_type and isinstance(A[0], (np.ndarray, list)):
+        check = np.isclose(np.linalg.norm(A, axis=1), 1)
+    if np.any(check == False):
+        return check
     else:
-        return np.all(np.isclose(np.linalg.norm(A, axis = (1,2)), 1))
+        return True
+    
+    
 
 def is_state(state: np.ndarray | list):
     """
-    Checks if a given state is a valid quantum state.
+    Checks if a given state is a valid quantum state and tells whether it is a ket (category 1), a dm (category 2) or a list of state (kets or dms, category 3)
     Args:
         state (np.ndarray): The quantum state to be checked.
     Returns:
-        bool: True if the state is a valid quantum state, False otherwise.
+        tuple: (category, is_valid)
+            category (int): 1 for ket, 2 for density matrix, 3 for list of states.
+            is_valid (bool or list): True if the states are all valid, False otherwise. If category is 3, it returns either True or a list of indices of invalid states.
     """
     if not isinstance(state, (list, np.ndarray)):
-        raise Exception("state must be a numpy array or a list of numpy arrays.")
+        raise Exception("State must be a numpy array or a list of numpy arrays.")
+    if len(state) == 0:
+        raise Exception("State cannot be empty.")
     shape = len(np.shape(state))
-    state = np.array(state, dtype=complex)
+
+    try:
+        state = np.array(state, dtype=complex)
+    except ValueError:
+        raise Exception("States must all have the same dimension.")
     category = 0
     if shape > 3:
         raise Exception("State must be a vector, a square matrix or a list of square matrices.")
@@ -94,19 +138,30 @@ def is_state(state: np.ndarray | list):
         return category, (len(state.shape) == 1 and np.isclose(np.linalg.norm(state), 1))
     
     if shape > 1:
-
-        if  shape == 2 and state.shape[0] != state.shape[1]:
+        check_ket = False
+        if shape == 2 and state.shape[0] == state.shape[1]:
+            check_ket = np.sum(np.linalg.eigvals(state)) > 1
+        if  shape == 2 and (state.shape[0] != state.shape[1] or check_ket):
             state = state[:,np.newaxis] * state[:,:,np.newaxis].conj()
             category = 2
         if shape == 3 and state.shape[1] != state.shape[2]:
             raise Exception("State must be a square matrix or a list of square matrices.")
 
-        check1 = np.all(np.isclose(np.linalg.trace(state), 1))
+        check = np.isclose(np.linalg.trace(state), 1)
+        check1 = np.all(check)
+        if not check1:
+            return check
         eigs = np.linalg.eigvalsh(state)
         tol = 1e-8
         eigs[np.abs(eigs) < tol] = 0
-        check2 = np.all(eigs>= 0)
-        check3 = is_herm(state)
+        check = np.all(eigs>= 0)
+        if not check:
+            return eigs > 0
+        check2 = np.all(check)
+        check = is_herm(state)
+        if not check:
+            return check
+        check3 = np.all(check)
         if category == 0:
             category = 3
         return category, (check1 and check2 and check3)
@@ -123,6 +178,9 @@ def ket_to_dm(state: np.ndarray | list) -> np.ndarray:
     """
     
     check = is_state(state)
+    print(check)
+    if not isinstance(check[0], int):
+        raise ValueError("Input contains invalid quantum states at indices: " + str(check))
     if not check[1]:
         raise ValueError("Input must be a valid quantum state.")
     if check[0] == 3:
@@ -162,13 +220,12 @@ def operator2vector(state: np.ndarray | list):
         raise TypeError("Input must be a numpy array or a list of arrays.")
     is_list_of_state = len(np.shape(state)) == 3
     state = np.asarray(state, dtype=complex)
-    N = nqubit(state)
-    
+    shape = np.shape(state)[1]
     if is_list_of_state:
-        state = np.array([state[i].ravel('F').reshape((4**N, 1)) for i in range(len(state))])
+        state = np.array([state[i].ravel('F').reshape((2*shape, 1)) for i in range(len(state))])
     else:
-        state = state.ravel('F').reshape((4**N, 1))
-    return state.ravel('F').reshape((4**N, 1))
+        state = state.ravel('F').reshape((2*shape, 1))
+    return state
 
 def pauli_basis(N, normalized=True):
     """
@@ -279,6 +336,11 @@ def vector2operator(state: np.ndarray | list):
         raise TypeError("Input must be a numpy array or a list of arrays.")
     
     state = np.asarray(state, dtype=complex)
-    N = int(0.5*np.log2(len(state)))
-    
-    return state.reshape((2**N,2**N), order='F')
+    is_list_of_state = len(np.shape(state)) == 3
+    if is_list_of_state:
+        N = int(0.5*np.log2(np.shape(state)[1]))
+        state = np.array([state[i].reshape((2**N, 2**N), order = 'F') for i in range(len(state))])
+    else:
+        N = int(0.5*np.log2(np.shape(state)[0]))
+        state = state.reshape((2**N,2**N), order='F')
+    return state
