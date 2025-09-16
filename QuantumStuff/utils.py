@@ -52,6 +52,8 @@ def dag(op: MatrixOrSparse):
         return [np.conj(a).T if isinstance(a, (np.ndarray, csc_array, csc_matrix)) else np.conj(np.asarray(a)).T for a in op]
     
     # Handle numpy arrays
+    if len(op.shape) == 1:
+        op = ket_to_dm(op)
     if len(op.shape) == 2:
         return np.conj(op).T
     elif len(op.shape) == 3:
@@ -137,7 +139,7 @@ def is_norm(A: MatrixOrSparse):
     
     
 
-def is_state(state: MatrixLike):
+def is_state(state: np.ndarray, batchmode: bool = True):
     """
     Checks if a given state is a valid quantum state and categorizes it.
     
@@ -148,6 +150,7 @@ def is_state(state: MatrixLike):
     
     Args:
         state (MatrixLike): The quantum state(s) to be checked.
+        batchmode (bool): If True, treats 2D arrays as batches of kets. Defaults to True.
     Returns:
         tuple: (category, is_valid)
             - category (int): 1 for ket, 2 for batch of kets, 3 for density matrices
@@ -166,40 +169,41 @@ def is_state(state: MatrixLike):
     category = 0
     if shape > 3:
         raise Exception("State must be a vector, a square matrix or a list of square matrices.")
-    
+    if shape == 3 and state.shape[1] != state.shape[2]:
+        raise Exception("State must be a square matrix or a list of square matrices.")
+
     if shape == 1:
         category = 1
         return category, (len(state.shape) == 1 and np.isclose(np.linalg.norm(state), 1))
-    
-    if shape > 1:
-        check_ket = False
-        if shape == 2 and state.shape[0] == state.shape[1]:
-            check_ket = np.sum(np.linalg.eigvals(state)) > 1
-        if  shape == 2 and (state.shape[0] != state.shape[1] or check_ket):
+    if shape == 2:
+        if batchmode:
             state = state[:,np.newaxis] * state[:,:,np.newaxis].conj()
             category = 2
-        if shape == 3 and state.shape[1] != state.shape[2]:
-            raise Exception("State must be a square matrix or a list of square matrices.")
-
-        check = np.isclose(np.linalg.trace(state), 1)
-        check1 = np.all(check)
-        if not check1:
-            return check
-        eigs = np.linalg.eigvalsh(state)
-        tol = 1e-8
-        eigs[np.abs(eigs) < tol] = 0
-        check = np.all(eigs>= 0)
-        if not check:
-            return eigs > 0
-        check2 = np.all(check)
-        check = is_herm(state)
-        if not check:
-            return check
-        check3 = np.all(check)
-        if category == 0:
+        else:
             category = 3
-        return category, (check1 and check2 and check3)
-
+            state = state[np.newaxis,:,:]
+            shape = 3
+           
+    
+    
+    check = np.isclose(np.linalg.trace(state), 1)
+    check1 = np.all(check)
+    if not check1:
+        return check
+    eigs = np.linalg.eigvalsh(state)
+    tol = 1e-8
+    eigs[np.abs(eigs) < tol] = 0
+    check = np.all(eigs>= 0)
+    if not check:
+        return eigs > 0
+    check2 = np.all(check)
+    check = is_herm(state)
+    if not check:
+        return check
+    check3 = np.all(check)
+    if category == 0:
+        category = 3
+    return category, (check1 and check2 and check3)
 
 # =============================================================================
 # STATE CONVERSION
@@ -217,7 +221,6 @@ def ket_to_dm(state: MatrixLike) -> np.ndarray:
     """
     
     check = is_state(state)
-    print(check)
     if not isinstance(check[0], int):
         raise ValueError("Input contains invalid quantum states at indices: " + str(check))
     if not check[1]:

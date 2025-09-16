@@ -435,7 +435,7 @@ class TestIsState:
     def test_valid_density_matrix(self):
         """Test valid density matrix (category 2 or 3)"""
         rho = np.array([[0.5, 0.5], [0.5, 0.5]], dtype=complex)
-        result = is_state(rho)
+        result = is_state(rho, batchmode=False)
         
         if len(result) == 2:
             category, is_valid = result
@@ -449,7 +449,7 @@ class TestIsState:
         """Test density matrix with invalid trace"""
         # Trace != 1
         rho = np.array([[0.6, 0.5], [0.5, 0.6]], dtype=complex)
-        result = is_state(rho)
+        result = is_state(rho, batchmode=False)
         
         # Should return indices where trace check failed
         if isinstance(result, tuple) and len(result) == 1:
@@ -465,7 +465,7 @@ class TestIsState:
         """Test density matrix with negative eigenvalues"""
         # Not positive semidefinite
         rho = np.array([[1, 2], [2, 1]], dtype=complex)
-        result = is_state(rho)
+        result = is_state(rho, batchmode=False)
         
         # Should detect invalid eigenvalues
         if isinstance(result, tuple) and len(result) == 1:
@@ -479,7 +479,7 @@ class TestIsState:
     def test_invalid_density_matrix_hermiticity(self):
         """Test non-Hermitian matrix"""
         rho = np.array([[1, 1+1j], [1-2j, 0]], dtype=complex)  # Not Hermitian
-        result = is_state(rho)
+        result = is_state(rho, batchmode=False)
         
         # Should detect non-Hermitian property
         if isinstance(result, tuple) and len(result) == 1:
@@ -610,7 +610,7 @@ class TestIsState:
         
         # Two-qubit density matrix
         bell_dm = np.outer(bell_state, np.conj(bell_state))
-        result = is_state(bell_dm)
+        result = is_state(bell_dm, batchmode = False)
         
         category, is_valid = result
         assert category == 3  # dm category
@@ -618,7 +618,7 @@ class TestIsState:
         
         # Maximally mixed two-qubit state
         mixed_dm = np.eye(4, dtype=complex) / 4
-        result = is_state(mixed_dm)
+        result = is_state(mixed_dm, batchmode = False)
         
         category, is_valid = result
         assert category == 3
@@ -633,7 +633,7 @@ class TestIsState:
         ]
         
         for state in test_states:
-            result = is_state(state)
+            result = is_state(state, False)
             
             # Result should be either:
             # 1. (category, boolean) for valid states
@@ -658,13 +658,13 @@ class TestIsState:
         
         # Almost valid trace for density matrix
         almost_trace_one = np.array([[0.500001, 0], [0, 0.499999]], dtype=complex)
-        result = is_state(almost_trace_one)
+        result = is_state(almost_trace_one, False)
         
         # Should handle numerical precision appropriately
         assert isinstance(result, tuple)
         assert len(result) in [1, 2]
         mixed_dm = np.eye(4) / 4
-        category, is_valid = is_state(mixed_dm)
+        category, is_valid = is_state(mixed_dm, False)
         assert category == 3  # dm category
         assert is_valid == True
     
@@ -697,11 +697,11 @@ class TestIsState:
         matrices = [
             np.array([[1, 0], [0, 0]], dtype=complex),
             np.array([[0.5, 0.5], [0.5, 0.5]], dtype=complex),
-            np.eye(2, dtype=complex)
+            np.eye(2, dtype=complex)/2
         ]
         
         for mat in matrices:
-            category, _ = is_state(mat)
+            category, _ = is_state(mat, False)
             assert category in [2,3]
         
         # Lists should always be category 3
@@ -744,7 +744,7 @@ class TestIsState:
         states = [bell_state, product_state, unnorm_state, bell_dm, mixed_dm]
         res = []
         for state in states:
-            results = is_state(state)
+            results = is_state(state, False)
             res.append(results)
         expected = [(1, np.True_), (1, np.True_), (1, np.False_), (3, np.True_), (3, np.True_)]
         assert res == expected

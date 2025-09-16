@@ -53,21 +53,17 @@ def expect(state: np.ndarray, op: np.ndarray):
         float or np.ndarray: The expectation value.
     """
 
-    l = np.shape(state)
-    if len(l) == 1:
-        return dag(state) @ op @ state
+    if is_state(state)[1] == False:
+        raise ValueError("Input is not a valid quantum state.")
+    state = ket_to_dm(state)
+    l = np.shape(state) 
+
+    if len(l) == 2:
+        return np.trace(np.matmul(op, state))
     else:
-        is_dm = l[-1] == l[-2]
-        if is_dm:
-            if len(l) == 2:
-                return np.trace(np.matmul(op, state))
-            else:
-                return np.einsum('ijk,kj->i', state, op)
-        else:
-            kets = state
-            bras = np.conjugate(kets).swapaxes(1, 2)
-            state = np.matmul(kets, bras)
-            return np.einsum('ijk,kj->i', state, op)
+        print(state.shape)
+
+        return np.einsum('ijk,kj->i', state, op)
 
 def haar_random_unitary(n_qubits):
     """

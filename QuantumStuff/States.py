@@ -1,5 +1,5 @@
 import numpy as np
-from .Operators import haar_random_unitary, measure, sigmax, sigmay, sigmaz
+from .Operators import haar_random_unitary, local_measurements
 from .utils import dag, is_state
 from functools import reduce
 import plotly.graph_objects as go
@@ -61,9 +61,9 @@ def bloch_vector(rho: np.ndarray | list):
     Returns:
         np.ndarray: The Bloch vector components (x, y, z).
     """
-
-    return np.transpose(np.real(measure(rho, [sigmax(), sigmay(), sigmaz()])), (0,2,1))
-
+    rho0 = np.array(rho)
+    bv = np.real(local_measurements(rho0))
+    return bv
 
 
 def left(dm = False, N: int = 1):
@@ -76,7 +76,7 @@ def left(dm = False, N: int = 1):
         np.ndarray: The left state for a qubit, either as a vector or a density matrix.
     """
 
-    l = (1/np.sqrt(2))*(zero()+1j*one())
+    l = (1/np.sqrt(2))*(zero()-1j*one())
     if N != 1:
         l = [l]*N
         l = reduce(np.kron, l)
@@ -189,7 +189,7 @@ def right(dm = False, N: int = 1):
         np.ndarray: The right state for a qubit, either as a vector or a density matrix.
     """
 
-    r = (1/np.sqrt(2))*(zero()-1j*one())
+    r = (1/np.sqrt(2))*(zero()+1j*one())
     if N != 1:
         r = [r]*N
         r = reduce(np.kron, r)
