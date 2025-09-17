@@ -1,100 +1,128 @@
+"""
+Quantum Operators and Measurements Module
+
+This module provides functions for quantum operators, measurements, and algebraic operations.
+Functions are organized by functionality for better code navigation.
+"""
+
 import numpy as np
-from .utils import is_state, tensor_product, ket_to_dm, ptrace, nqubit, dag
+from .utils import is_state, tensor_product, ket_to_dm, ptrace, nqubit, dag, validate_matrix_types
 from itertools import combinations
 from scipy.special import comb
-from scipy.sparse import csc_array, kron, csc_matrix
+from scipy.sparse import csc_array, kron, csc_matrix, dia_matrix
+from typing import Union
 
-def anticommutator(A: np.ndarray | list, B: np.ndarray | list):
+# Type aliases for better code readability
+MatrixLike = Union[np.ndarray, list]
+SparseLike = Union[csc_array, csc_matrix]
+MatrixOrSparse = Union[np.ndarray, csc_array, csc_matrix]
+OperatorType = np.ndarray
+
+# =============================================================================
+# ALGEBRAIC OPERATIONS
+# =============================================================================
+
+def anticommutator(A:MatrixOrSparse, B:MatrixOrSparse) -> np.ndarray:
     """
-    Anticommutator of two matrices A and B.
-    Args:
-        A (np.ndarray): First matrix.
-        B (np.ndarray): Second matrix.
-    Returns:
-        np.ndarray: The anticommutator of A and B.
-    """
-    if not isinstance(A, (list, np.ndarray)):
-        raise Exception("Both A and B must be numpy arrays or lists of numpy arrays.")
-    if not isinstance(B, (list, np.ndarray)):
-        raise Exception("Both A and B must be numpy arrays or lists of numpy arrays.")
+    Compute the anticommutator {A, B} = AB + BA of two matrices.
     
-    A = np.asarray(A, dtype = complex)
-    B = np.asarray(B, dtype = complex)
-    return A @ B + B @ A
-
-def commutator(A: np.ndarray | list, B: np.ndarray | list):
-    """
-    Commutator of two matrices A and B.
     Args:
-        A (np.ndarray): First matrix.
-        B (np.ndarray): Second matrix.
+        A (MatrixOrSparse): First matrix operator.
+        B (MatrixOrSparse): Second matrix operator.
+        
     Returns:
-        np.ndarray: The commutator of A and B.
+        np.ndarray: The anticommutator {A, B} = AB + BA.
+        
+    Raises:
+        Exception: If inputs are not numpy arrays or lists.
     """
-    if not isinstance(A, (list, np.ndarray)):
-        raise Exception("Both A and B must be numpy arrays or lists of numpy arrays.")
-    if not isinstance(B, (list, np.ndarray)):
-        raise Exception("Both A and B must be numpy arrays or lists of numpy arrays.")
+    from scipy.sparse import issparse
+    if not isinstance(A, (list, np.ndarray)) and not issparse(A):
+        raise Exception("Both A and B must be numpy arrays, lists, or sparse matrices.")
+    if not isinstance(B, (list, np.ndarray)) and not issparse(B):
+        raise Exception("Both A and B must be numpy arrays, lists, or sparse matrices.")
     if A.shape != B.shape:
         raise Exception("A and B must have the same shape.")
+    if issparse(A) or issparse(B):
+        A = csc_array(A, dtype=complex)
+        B = csc_array(B, dtype=complex)
+        return A @ B + B @ A
+    A = np.asarray(A, dtype=complex)
+    B = np.asarray(B, dtype=complex)
+    return A @ B + B @ A
+    return A @ B + B @ A
+
+def commutator(A:MatrixOrSparse, B:MatrixOrSparse) -> np.ndarray:
+    """
+    Compute the commutator [A, B] = AB - BA of two matrices.
     
+    Args:
+        A (MatrixOrSparse): First matrix operator.
+        B (MatrixOrSparse): Second matrix operator.
+        
+    Returns:
+        np.ndarray: The commutator [A, B] = AB - BA.
+        
+    Raises:
+        Exception: If inputs are not numpy arrays/lists or have different shapes.
+    """
+    from scipy.sparse import issparse
+    if not isinstance(A, (list, np.ndarray)) and not issparse(A):
+        raise Exception("Both A and B must be numpy arrays, lists, or sparse matrices.")
+    if not isinstance(B, (list, np.ndarray)) and not issparse(B):
+        raise Exception("Both A and B must be numpy arrays, lists, or sparse matrices.")
+    if A.shape != B.shape:
+        raise Exception("A and B must have the same shape.")
+    if issparse(A) or issparse(B):
+        A = csc_array(A, dtype=complex)
+        B = csc_array(B, dtype=complex)
+        return A @ B - B @ A  # Fixed: was + instead of -
     A = np.asarray(A, dtype=complex)
     B = np.asarray(B, dtype=complex)
     
     return A @ B - B @ A
 
-def expect(state: np.ndarray, op: np.ndarray):
-    """
-    Expectation value of an operator with respect to a quantum state.
-    Args:
-        state (np.ndarray): The quantum state (ket or density matrix).
-        op (np.ndarray): The operator.
-    Returns:
-        float or np.ndarray: The expectation value.
-    """
+# =============================================================================
+# EXPECTATION VALUES AND MEASUREMENTS
+# =============================================================================
 
-    if is_state(state)[1] == False:
+def expect(state: np.ndarray, op: np.ndarray, batchmode: bool = True) -> Union[float, np.ndarray]:
+    """
+    Calculate the expectation value ⟨ψ|O|ψ⟩ or Tr(ρO) of an operator.
+    
+    Args:
+        state (np.ndarray): Quantum state as ket vector or density matrix.
+        op (np.ndarray): Operator to measure.
+        batchmode (bool): If True, allows batch processing of multiple states.
+        
+    Returns:
+        Union[float, np.ndarray]: Expectation value(s) - scalar for single state,
+                                 array for batch processing.
+                                 
+    Raises:
+        ValueError: If input is not a valid quantum state.
+    """
+    if is_state(state, batchmode)[1] == False:
         raise ValueError("Input is not a valid quantum state.")
-    state = ket_to_dm(state)
+    state = ket_to_dm(state, batchmode)
     l = np.shape(state) 
 
     if len(l) == 2:
         return np.trace(np.matmul(op, state))
     else:
         print(state.shape)
-
         return np.einsum('ijk,kj->i', state, op)
 
-def haar_random_unitary(n_qubits):
+def local_measurements(rho: np.ndarray) -> np.ndarray:
     """
-    Generate a Haar random unitary matrix for n_qubits.
+    Perform optimized local Pauli measurements on each qubit.
     
-    Parameters:
-    - n_qubits (int): Number of qubits
-    
-    Returns:
-    - numpy.ndarray: A Haar random unitary matrix
-    """
-    if (not isinstance(n_qubits, int) or n_qubits<1):
-        raise Exception("n_qubits must be a positive integer")
-    dim = 2**n_qubits
-    
-    # Generate Haar random unitary
-    Z = (np.random.randn(dim, dim) + 1j*np.random.randn(dim, dim)) / np.sqrt(2)
-    Q, R = np.linalg.qr(Z)
-    # Fix phases to get Haar distribution
-    phases = np.diag([R[i,i]/abs(R[i,i]) for i in range(dim)])
-    U = Q @ phases
-    
-    return U
-
-def local_measurements(rho: np.ndarray):
-    """
-    Optimized measurement function for local observables.
     Args:
-        rho (np.ndarray): The density matrix of the quantum state.
+        rho (np.ndarray): Density matrix of quantum state. Shape (d,d) or (n,d,d).
+        
     Returns:
-        np.ndarray: The measurement results for each qubit.
+        np.ndarray: Measurement results array with shape (n_states, n_qubits*3).
+                   For each qubit: [⟨σx⟩, ⟨σy⟩, ⟨σz⟩]
     """
     operators = [sigmax(), sigmay(), sigmaz()]
     Nq = int(np.log2(rho.shape[1]))
@@ -112,58 +140,27 @@ def local_measurements(rho: np.ndarray):
             out.append(expect(rho_red, operators[k]))
     return np.array(out).T
 
-def local_operators(operator: np.ndarray | csc_array | csc_matrix, N: int):
+def measure(states: MatrixLike, operators: list, indices_list: list, batchmode: bool = True) -> np.ndarray:
     """
-    Creates a list of local operators for a given operator and number of qubits.
-    Args:
-        operator (np.ndarray): The operator to be replicated.
-        N (int): The number of qubits.
-    Returns:
-        np.ndarray: A list of local operators for the given operator and number of qubits.
-    """
-    if not isinstance(operator, (np.ndarray, csc_array, csc_matrix)):
-        raise Exception("Operator must be a numpy array.")
-    if not isinstance(N, int) or N <= 0:
-        raise Exception("N must be a positive integer.")
-    if isinstance(operator, (np.ndarray)):
-        op = [np.eye(2)]*N
-        result = np.zeros((N, 2**N, 2**N), dtype = np.complex128)
-        for i in range(N):
-            op[i] = operator
-            result[i] = tensor_product(op)
-            op[i] = np.eye(2)
-    else:
-        op = [csc_array(np.eye(2))]*N
-        result = []
-        for i in range(N):
-            op[i] = operator
-            result.append(tensor_product(op))
-            op[i] = csc_array(np.eye(2))
-            result[i] = csc_array(result[i])
-    
-    return result
-
-def measure(states: list | np.ndarray, operators: list, indices_list: list):
-    """
-    Measure a list of quantum states with a list of operators on multiple sets of indices.
+    Measure quantum states with operators on specified qubit indices.
 
     Args:
-        states (list of np.ndarray): List of density matrices representing quantum states.
-        operators (list of np.ndarray): List of operators to measure.
-        indices_list (list of list of list of int): 
-            For each operator, a list of index sets where the operator acts.
-            Example: [ [[0], [1], [2]], [[0,1]], ... ]
-        partial_trace_fn (function): Function that takes (states, indices_to_keep)
-                                     and returns the reduced density matrices.
+        states (MatrixLike): List of density matrices representing quantum states.
+        operators (list): List of operators to measure.
+        indices_list (list): For each operator, list of index sets where operator acts.
+                           Example: [[[0], [1], [2]], [[0,1]], ...]
+        batchmode (bool): Whether to use batch processing mode.
 
     Returns:
-        np.array: For each operator, a list of lists of measurement results (one list per index set).
-              Shape: [operator][index_set][state]
+        np.ndarray: Measurement results with shape [n_states, n_measurements].
+                   Each column represents measurement results for one operator-index combination.
+                   
+    Raises:
+        ValueError: If inputs are invalid quantum states or incompatible dimensions.
     """
-    
-    if not is_state(states)[1]:
+    if not is_state(states, batchmode)[1]:
         raise ValueError("Input must be a quantum state or a list of quantum states.")
-    states = ket_to_dm(states)
+    states = ket_to_dm(states, batchmode)
     if not isinstance(operators, list) or not all(isinstance(op, np.ndarray) for op in operators):
         raise ValueError("Operators must be a list of numpy arrays.")
     if not isinstance(indices_list, list) or not all(isinstance(indices, list) for indices in indices_list):
@@ -187,64 +184,17 @@ def measure(states: list | np.ndarray, operators: list, indices_list: list):
 
     return np.array(all_measurements).T
 
-
-def sigmap():
-    '''
-    Creates the raising operator (sigma plus) for a qubit.
-    Returns:
-        np.ndarray: The raising operator (sigma plus) for a qubit.
-    '''
-    sp = np.array([[0,1],[0,0]], dtype = complex)
-    return sp
-
-def sigmam():
-    '''
-    Creates the lowering operator (sigma minus) for a qubit.
-    Returns:
-        np.ndarray: The lowering operator (sigma minus) for a qubit.
-    '''
-
-    sm = np.array([[0,0],[1,0]], dtype = complex)
-    return sm
-
-def sigmax():
-    '''
-    Creates the Pauli X operator (sigma x) for a qubit.
-    Returns:
-        np.ndarray: The Pauli X operator (sigma x) for a qubit.
-    '''
-
-    sx = np.array([[0,1], [1,0]], dtype = complex)
-    return sx
-
-def sigmay():
-    '''
-    Creates the Pauli Y operator (sigma y) for a qubit.
-    Returns:
-        np.ndarray: The Pauli Y operator (sigma y) for a qubit.
-    '''
-
-    sy = np.array([[0,-1j],[1j,0]], dtype = complex)
-    return sy
-
-def sigmaz():
-    '''
-    Creates the Pauli Z operator (sigma z) for a qubit.
-    Returns:
-        np.ndarray: The Pauli Z operator (sigma z) for a qubit.
-    '''
-
-    sz = np.array([[1,0],[0,-1]], dtype = complex)
-    return sz
-
-def two_qubits_measurements(ρ: np.ndarray, operators: list):
+def two_qubits_measurements(ρ: np.ndarray, operators: list) -> np.ndarray:
     """
-    Optimized function for two-qubit measurements.
+    Optimized two-qubit correlation measurements on all qubit pairs.
+    
     Args:
-        ρ (np.ndarray): The density matrix of the quantum state. Shape (d,d) or (n,d,d) for n states.
-        operators (list): List of operators to measure. Each operator should be a 4x4 numpy array.
+        ρ (np.ndarray): Density matrix with shape (d,d) or (n,d,d) for n states.
+        operators (list): List of two-qubit operators (4×4 matrices).
+        
     Returns:
-        np.ndarray: Measurement results for each pair of qubits and each operator.
+        np.ndarray: Measurement results with shape (n_states, n_pairs*n_operators).
+                   Results for all C(n_qubits,2) pairs and all operators.
     """
     Nq = int(np.log2(ρ.shape[1]))
     shape = ρ.shape
@@ -259,3 +209,120 @@ def two_qubits_measurements(ρ: np.ndarray, operators: list):
         for k in range(len(operators)):
             out[:, int(comb(Nq,2)) * k + i] = np.real(np.trace(operators[k]@ρ_red, axis1 = 1, axis2 = 2))
     return out
+
+# =============================================================================
+# OPERATOR CONSTRUCTION AND MANIPULATION  
+# =============================================================================
+
+def local_operators(operator: MatrixOrSparse, N: int) -> Union[np.ndarray, list]:
+    """
+    Create local operators acting on individual qubits in N-qubit system.
+    
+    Args:
+        operator (MatrixOrSparse): Single-qubit operator to apply locally.
+        N (int): Total number of qubits in the system.
+        
+    Returns:
+        Union[np.ndarray, list]: Array of local operators, one for each qubit.
+                                For sparse inputs, returns list of sparse matrices.
+                                
+    Raises:
+        Exception: If operator type is invalid or N is not a positive integer.
+    """
+    if not isinstance(operator, (np.ndarray, csc_array, csc_matrix)):
+        raise Exception("Operator must be a numpy array or sparse matrix.")
+    if not isinstance(N, int) or N <= 0:
+        raise Exception("N must be a positive integer.")
+    
+    if isinstance(operator, (np.ndarray)):
+        op = [np.eye(2)]*N
+        result = np.zeros((N, 2**N, 2**N), dtype = np.complex128)
+        for i in range(N):
+            op[i] = operator
+            result[i] = tensor_product(op)
+            op[i] = np.eye(2)
+    else:
+        op = [csc_array(np.eye(2))]*N
+        result = []
+        for i in range(N):
+            op[i] = operator
+            result.append(tensor_product(op))
+            op[i] = csc_array(np.eye(2))
+            result[i] = csc_array(result[i])
+    
+    return result
+
+def haar_random_unitary(n_qubits: int) -> np.ndarray:
+    """
+    Generate a Haar random unitary matrix for quantum systems.
+    
+    Args:
+        n_qubits (int): Number of qubits (must be positive integer).
+        
+    Returns:
+        np.ndarray: Haar random unitary matrix of dimension 2^n_qubits.
+        
+    Raises:
+        Exception: If n_qubits is not a positive integer.
+    """
+    if (not isinstance(n_qubits, int) or n_qubits<1):
+        raise Exception("n_qubits must be a positive integer")
+    dim = 2**n_qubits
+    
+    # Generate Haar random unitary using QR decomposition
+    Z = (np.random.randn(dim, dim) + 1j*np.random.randn(dim, dim)) / np.sqrt(2)
+    Q, R = np.linalg.qr(Z)
+    # Fix phases to get proper Haar distribution
+    phases = np.diag([R[i,i]/abs(R[i,i]) for i in range(dim)])
+    U = Q @ phases
+    
+    return U
+
+# =============================================================================
+# PAULI OPERATORS
+# =============================================================================
+
+def sigmap() -> OperatorType:
+    """
+    Create the Pauli raising operator σ₊ = (σₓ + iσᵧ)/2.
+    
+    Returns:
+        OperatorType: 2×2 raising operator matrix |0⟩⟨1|.
+    """
+    return np.array([[0, 1], [0, 0]], dtype=complex)
+
+def sigmam() -> OperatorType:
+    """
+    Create the Pauli lowering operator σ₋ = (σₓ - iσᵧ)/2.
+    
+    Returns:
+        OperatorType: 2×2 lowering operator matrix |1⟩⟨0|.
+    """
+    return np.array([[0, 0], [1, 0]], dtype=complex)
+
+def sigmax() -> OperatorType:
+    """
+    Create the Pauli X operator (bit-flip gate).
+    
+    Returns:
+        OperatorType: 2×2 Pauli X matrix [[0,1],[1,0]].
+    """
+    return np.array([[0, 1], [1, 0]], dtype=complex)
+
+def sigmay() -> OperatorType:
+    """
+    Create the Pauli Y operator (bit and phase flip gate).
+    
+    Returns:
+        OperatorType: 2×2 Pauli Y matrix [[0,-i],[i,0]].
+    """
+    return np.array([[0, -1j], [1j, 0]], dtype=complex)
+
+def sigmaz() -> OperatorType:
+    """
+    Create the Pauli Z operator (phase-flip gate).
+    
+    Returns:
+        OperatorType: 2×2 Pauli Z matrix [[1,0],[0,-1]].
+    """
+    return np.array([[1, 0], [0, -1]], dtype=complex)

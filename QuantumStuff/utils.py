@@ -209,7 +209,7 @@ def is_state(state: np.ndarray, batchmode: bool = True):
 # STATE CONVERSION
 # =============================================================================
     
-def ket_to_dm(state: MatrixLike) -> np.ndarray:
+def ket_to_dm(state: MatrixLike, batchmode: bool) -> np.ndarray:
     """
     Convert a ket to a density matrix.
     
@@ -220,9 +220,11 @@ def ket_to_dm(state: MatrixLike) -> np.ndarray:
         np.ndarray: The corresponding density matrix.
     """
     
-    check = is_state(state)
+    check = is_state(state, batchmode)
+    if check[0] == 3:
+        return state
     if not isinstance(check[0], int):
-        raise ValueError("Input contains invalid quantum states at indices: " + str(check))
+        raise ValueError("Input contains invalid quantum states at indices: " + str(np.where(check == False)))
     if not check[1]:
         raise ValueError("Input must be a valid quantum state.")
     if check[0] == 3:
@@ -297,7 +299,7 @@ def nqubit(op: MatrixLike) -> int:
         raise TypeError("Input must be a numpy array or a list of arrays.")
     op = np.asarray(op, dtype=complex)
     if is_state(op)[1]:
-        op = ket_to_dm(op)
+        op = ket_to_dm(op, batchmode=True)
     
     return int(np.log2(op.shape[1])) if isinstance(op, (np.ndarray, (list, np.array))) else 0
 
@@ -418,3 +420,50 @@ def ptrace(rho: MatrixLike, index: list):
     stringa = ''.join(stringa)
     rho = np.einsum(stringa+'->'+out, rho.reshape(new_shape)).reshape(shape1)
     return rho
+
+# =============================================================================
+# ARRAY VALIDATION AND CONVERSION UTILITIES
+# =============================================================================
+
+def ensure_complex_array(x: MatrixLike, name: str = "input") -> np.ndarray:
+    """
+    Convert input to complex numpy array with validation.
+    
+    Common utility to replace repeated pattern of:
+    - Type checking with isinstance
+    - Converting to complex numpy array with np.asarray(x, dtype=complex)
+    
+    Args:
+        x (MatrixLike): Input to convert (numpy array or list).
+        name (str): Name of the input for error messages.
+        
+    Returns:
+        np.ndarray: Complex numpy array.
+        
+    Raises:
+        TypeError: If input is not a valid array-like type.
+    """
+    if not isinstance(x, (np.ndarray, list)):
+        raise TypeError(f"{name} must be a numpy array or list.")
+    return np.asarray(x, dtype=complex)
+
+def validate_matrix_types(*args, names: list = None) -> tuple:
+    """
+    Validate and convert multiple matrix inputs to complex arrays.
+    
+    Args:
+        *args: Variable number of matrix inputs.
+        names (list): Optional names for error messages.
+        
+    Returns:
+        tuple: Converted complex numpy arrays.
+        
+    Raises:
+        TypeError: If any input is not a valid matrix type.
+    """
+    if names is None:
+        names = [f"argument_{i}" for i in range(len(args))]
+    elif len(names) != len(args):
+        raise ValueError("Number of names must match number of arguments.")
+    
+    return tuple(ensure_complex_array(arg, name) for arg, name in zip(args, names))

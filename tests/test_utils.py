@@ -753,22 +753,22 @@ class TestKetToDm:
     def test_pure_state_conversion(self):
         """Test conversion from ket to density matrix"""
         psi = np.array([1/np.sqrt(2), 1/np.sqrt(2)], dtype=complex)
-        rho = ket_to_dm(psi)
+        rho = ket_to_dm(psi, batchmode=False)
         expected = np.outer(psi, np.conj(psi))
         np.testing.assert_array_almost_equal(rho, expected)
     
     def test_batch_conversion(self):
         """Test batch conversion of multiple states"""
         states = np.array([[1, 0], [0, 1]], dtype=complex)
-        rhos = ket_to_dm(states)
+        rhos = ket_to_dm(states, batchmode=True)
         assert rhos.shape == (2, 2, 2)
     
     def test_invalid_input(self):
         """Test error handling for invalid input"""
         with pytest.raises(ValueError):
-            ket_to_dm(np.array([1, 1], dtype=complex))
+            ket_to_dm(np.array([1, 1], dtype=complex), batchmode=False)
         with pytest.raises(ValueError):
-            ket_to_dm(np.array([[1, 0], [1, 1]], dtype=complex))
+            ket_to_dm(np.array([[1, 0], [1, 1]], dtype=complex), batchmode=True)
 
 
 class TestNqubit:
