@@ -1,6 +1,6 @@
 from scipy.integrate import solve_ivp
 import numpy as np
-from .utils import is_state, is_herm, dag, ket_to_dm, operator2vector, vector2operator
+from .utils import is_state, is_herm, dag, ket_to_dm, operator2vector, vector2operator, nqubit
 from .Operators import anticommutator, commutator
 from .States import zero
 from scipy.sparse.linalg import expm_multiply
@@ -9,7 +9,7 @@ from scipy.linalg import expm
 from tqdm import tqdm
 
 
-def dissipator(state: np.ndarray, L: np.ndarray | list):
+def dissipator(state: np.ndarray | list, L: np.ndarray | list):
     """
     Dissipator for a Lindblad operator L acting on the state ρ.
     Args:
@@ -18,51 +18,80 @@ def dissipator(state: np.ndarray, L: np.ndarray | list):
     Returns:
         np.ndarray: The dissipator term for the Lindblad equation.
     """
-    if not is_state(state):
+    if len(L) == 0:
+        return 0
+    check = is_state(state, batchmode = False)
+    if len(np.shape(state)) == 3:
+        raise ValueError("Batch mode is not supported")
+    if np.False_ in check:
         raise ValueError("Input must be a valid quantum state (density matrix).")
-    if not isinstance(L, (np.ndarray, list)):
+    if not isinstance(L, (np.ndarray, list, csc_array, csc_matrix)):
         raise ValueError("L must be a numpy array or a list of numpy arrays.")
-    L = np.asarray(L)
+    L = np.asarray(L, dtype=complex)
+        
+    state = np.asarray(state, dtype=complex)
+    if check[0] == 1:
+        state = ket_to_dm(state, batchmode = False)
+    if L.ndim == 2:
+        LL = dag(L) @ L
+        return (L @ state @ dag(L) - 0.5 * anticommutator(LL, state))
+    else:
+        LL = dag(L) @ L
+        return np.sum(L @ state @ dag(L)- 0.5 *(LL @ state + (state @ LL.transpose((1,2,0))).transpose(2,1,0)),0)
     
-    LL = dag(L) @ L
-    return (L @ state @ dag(L) - 0.5 * anticommutator(LL, state))
+def evolve_lindblad(state0: np.ndarray | list, H: np.ndarray, t: np.ndarray, c_ops:list = []):
+    """
+    Evolve a quantum state under the Lindblad equation with improved numerical stability.
+    """
+    is_dm = is_state(state0, batchmode = False)
 
-def evolve_lindblad(state0: np.ndarray, H: np.ndarray, t: np.ndarray, c_ops:list = []):
-    """
-    Evolve a quantum state under the Lindblad equation.
-    Args:
-        ρ0 (np.ndarray): Initial density matrix.
-        H (np.ndarray): Hamiltonian operator.
-        t (np.ndarray): Time points for evolution.
-        c_ops (list, optional): List of jump operators. Defaults to [].
-    Returns:
-        np.ndarray: Time-evolved density matrix.
-    """
-    
-    state0 = state0.reshape(int(state0.shape[0]**2))
+    if np.False_ in is_dm:
+        raise ValueError("The state must be a valid quantum state")
+    if is_dm[0] == 1:
+        state0 = ket_to_dm(state0, batchmode = False)
+    n = nqubit(state0)
+    state0 = np.array(state0, dtype = complex).ravel('F')
     t0 = t[0]
     tf = t[-1]
-    return solve_ivp(Liouvillian, [t0, tf], state0, t_eval = t, args = (H, c_ops)).y
+    
+    # Use much stricter tolerances
+    solution = solve_ivp(Liouvillian, [t0,tf], state0, t_eval = t, args = (H, c_ops),
+                        rtol=1e-8, atol=1e-10, method='DOP853')
+    
+    return solution.y.reshape((2**n,2**n, len(t)), order='F').transpose((2,0,1))
 
-def evolve_unitary(U: np.ndarray, state: np.ndarray | list):
+def evolve_unitary(U: np.ndarray | csc_array | csc_matrix, state: np.ndarray | list | csc_array | csc_matrix, batchmode: bool):
     """
     Evolve a quantum state using a unitary operator.
     Args:
-        U (np.ndarray): Unitary operator.
+        U (np.ndarray | csc_array | csc_matrix): Unitary operator.
         state (np.ndarray | list): Quantum state to evolve.
+        batchmode (bool): If True, process a batch of states.
     Returns:
         np.ndarray: Evolved quantum state.
     """
     
     if not isinstance(state, (np.ndarray, list)):
         raise TypeError("The state must be a numpy array or a list")
-    state = np.asarray(state, dtype = complex)
-    isdm = is_state(state)
-    if not isdm[1]:
+    if isinstance(state, list):
+        state = np.asarray(state, dtype = complex)
+    if not isinstance(U, (np.ndarray, csc_array, csc_matrix)):
+        raise TypeError("The unitary operator must be a numpy array, csc_array or csc_matrix")
+    if isinstance(U, (csc_array, csc_matrix)) and (state.ndim == 1 or state.ndim == 2 and batchmode):
+        U = U.toarray()
+    if isinstance(U, (csc_array, csc_matrix)) or isinstance(state, (csc_array, csc_matrix)):
+        U = csc_array(U, dtype = complex)
+        state = csc_array(state, dtype = complex)
+    
+    isdm = is_state(state, batchmode)
+    if np.False_ in isdm:
         raise ValueError("The state must be a valid quantum state")
-    if state.ndim == 1 or (state.shape[0] != state.shape[1] and state.ndim == 2):
-        state = ket_to_dm(state)
-    return U @ state @ dag(U)
+    if isdm[0] == 1:
+        return U @ state
+    elif isdm[0] == 2:
+        return (U @ state.T).T
+    else:
+        return U @ state @ dag(U)
 
 def interaction(op: np.ndarray | list, J: np.ndarray | list):
     """
@@ -99,12 +128,12 @@ def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix
     """
     if ignore:
         pass
-    elif not is_state(rho)[1]:
+    elif np.False_ in is_state(rho, False):
         raise ValueError("Input must be a valid quantum state.")
     if SD == None:
         SD = csc_array(np.zeros_like(SH.toarray()))
     L = SH + SD
-    is_sparse = type(L) == csc_matrix or csc_array
+    is_sparse = isinstance(L, (csc_matrix, csc_array))
     if rho.ndim != 1:
         rho = operator2vector(rho)
     if is_sparse:
@@ -123,19 +152,21 @@ def Liouvillian(t: float, state: np.ndarray, H: np.ndarray, c_ops: list |np.ndar
     Returns:
         np.ndarray: The time derivative of the density matrix ρ.
     """
-    if not is_state(state):
-        raise ValueError("Input must be a valid quantum state (density matrix).")
+    state = np.array(state, dtype = complex)
+    if state.ndim == 2:
+        n = nqubit(state)
+    if state.ndim == 1:
+        n = int(np.log2(len(state)/2))
+        state = state.reshape((2**n,2**n), order = 'F')
     if not is_herm(H):
         raise ValueError("Hamiltonian must be a Hermitian operator.")
     if not isinstance(c_ops, (list, np.ndarray)):
         raise ValueError("c_ops must be a list or numpy array of jump operators.")
     
-    if len(state.shape) != 2:
-        state = state.reshape([int(np.sqrt(state.shape[0]))]*2)
     F = -1j * commutator(H, state)
-    for i in range(len(c_ops)):
-        F += dissipator(state, c_ops[i])
-    return F.ravel()
+    
+    F += dissipator(state, c_ops)
+    return F.ravel('F')
 
 def random_coupling(Js: float, sites: int):
     """

@@ -49,7 +49,7 @@ def dag(op: MatrixOrSparse):
     
     # Handle lists
     if isinstance(op, list):
-        return [np.conj(a).T if isinstance(a, (np.ndarray, csc_array, csc_matrix)) else np.conj(np.asarray(a)).T for a in op]
+        return [np.conj(a).T if isinstance(a, (np.ndarray, csc_array, csc_matrix)) else np.conj(np.asarray(a, dtype = complex)).T for a in op]
     
     # Handle numpy arrays
     if len(op.shape) == 1:
@@ -225,7 +225,7 @@ def ket_to_dm(state: MatrixLike, batchmode: bool) -> np.ndarray:
         return state
     if not isinstance(check[0], int):
         raise ValueError("Input contains invalid quantum states at indices: " + str(np.where(check == False)))
-    if not check[1]:
+    if np.False_ in check:
         raise ValueError("Input must be a valid quantum state.")
     if check[0] == 3:
         return state
@@ -242,7 +242,7 @@ def operator2vector(state: MatrixLike):
     """
     Vectorizes a quantum state (density matrix).
     Args:
-        state (MatrixLike): The quantum state to be vectorized in density matrix form.
+        state (np.ndarray | list): The quantum state to be vectorized in density matrix form.
     Returns:
         np.ndarray: The vectorized form of the quantum state.
     """
@@ -252,11 +252,10 @@ def operator2vector(state: MatrixLike):
     state = np.asarray(state, dtype=complex)
     shape = np.shape(state)[1]
     if is_list_of_state:
-        state = np.array([state[i].ravel('F').reshape((2*shape, 1)) for i in range(len(state))])
+        state = np.array([state[i].ravel('F').reshape((shape**2, 1)) for i in range(len(state))], dtype = complex)
     else:
-        state = state.ravel('F').reshape((2*shape, 1))
+        state = state.ravel('F').reshape((shape**2, 1))
     return state
-
 
 def vector2operator(state: MatrixLike):
     """
@@ -273,7 +272,7 @@ def vector2operator(state: MatrixLike):
     is_list_of_state = len(np.shape(state)) == 3
     if is_list_of_state:
         N = int(0.5*np.log2(np.shape(state)[1]))
-        state = np.array([state[i].reshape((2**N, 2**N), order = 'F') for i in range(len(state))])
+        state = np.array([state[i].reshape((2**N, 2**N), order = 'F') for i in range(len(state))], dtype = complex)
     else:
         N = int(0.5*np.log2(np.shape(state)[0]))
         state = state.reshape((2**N,2**N), order='F')
@@ -298,29 +297,9 @@ def nqubit(op: MatrixLike) -> int:
     if not isinstance(op, (np.ndarray, list)):
         raise TypeError("Input must be a numpy array or a list of arrays.")
     op = np.asarray(op, dtype=complex)
-    if is_state(op)[1]:
-        op = ket_to_dm(op, batchmode=True)
+    op = ket_to_dm(op, batchmode= False)
     
     return int(np.log2(op.shape[1])) if isinstance(op, (np.ndarray, (list, np.array))) else 0
-
-def operator2vector(state: np.ndarray | list):
-    """
-    Vectorizes a quantum state (density matrix).
-    Args:
-        state (np.ndarray | list): The quantum state to be vectorized in density matrix form.
-    Returns:
-        np.ndarray: The vectorized form of the quantum state.
-    """
-    if not isinstance(state, (np.ndarray, list)):
-        raise TypeError("Input must be a numpy array or a list of arrays.")
-    is_list_of_state = len(np.shape(state)) == 3
-    state = np.asarray(state, dtype=complex)
-    shape = np.shape(state)[1]
-    if is_list_of_state:
-        state = np.array([state[i].ravel('F').reshape((2*shape, 1)) for i in range(len(state))])
-    else:
-        state = state.ravel('F').reshape((2*shape, 1))
-    return state
 
 def pauli_basis(N, normalized=True):
     """

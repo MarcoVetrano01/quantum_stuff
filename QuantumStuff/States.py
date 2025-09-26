@@ -8,7 +8,6 @@ Functions are organized by functionality for better code navigation.
 
 import numpy as np
 from .Operators import haar_random_unitary, local_measurements
-from .utils import dag, is_state
 from functools import reduce
 import plotly.graph_objects as go
 import string
@@ -193,7 +192,7 @@ def bloch_vector(rho: MatrixLike) -> np.ndarray:
     Returns:
         np.ndarray: The Bloch vector components (x, y, z).
     """
-    rho_array = np.array(rho)
+    rho_array = np.array(rho, dtype = complex)
     bloch_vec = np.real(local_measurements(rho_array))
     return bloch_vec
 

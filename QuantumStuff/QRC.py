@@ -75,7 +75,7 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
 
     return state_t
 
-def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False):
+def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, sqo: list, tqo: list, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False):
     """ 
     Trains a QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by 
     Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291 . After the evolution of the system
@@ -93,7 +93,9 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
         H_enc (np.ndarray | sp.csc_matrix | sp.csc_array): The encoding Hamiltonian.
         H0 (np.ndarray | sp.csc_matrix | sp.csc_array): The initial Hamiltonian.
         c_ops (list): List of collapse operators for the system.
-        δt (float): Time step for the evolution.
+        dt (float): Time step for the evolution.
+        sqo (list): List of single qubit operators for optimized local measurements. Delfault to [σx, σy, σz].
+        tqo (list): List of two qubit operators for optimized two qubit measurements. Default to [σx⊗σx, σy⊗σy, σz⊗σz].
         operators (list): List of measurement operators.
         meas_ind (list): Where the operators must be measured.
         wo (int, optional): Wash out time for the reservoir. Defaults to 1000.
@@ -115,9 +117,9 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
     if meas_ind is not None or operators is not None:
         if len(meas_ind) == 0:
             meas_ind = [[] for i in range(len(operators))]
-        x_train = measure(rhot[wo:], operators, meas_ind)
+        x_train = measure(rhot[wo:train_size], operators, meas_ind)
     else:
-        x_train = np.hstack((local_measurements(rhot[wo: wo + train_size]), two_qubits_measurements(rhot[wo: wo + train_size], tqo), np.ones((train_size, 1))))
+        x_train = np.hstack((local_measurements(rhot[wo: wo + train_size], sqo), two_qubits_measurements(rhot[wo: wo + train_size], tqo)))
     
     x_train = np.real(x_train)
 
@@ -128,7 +130,7 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
 
     return ridge, x_train, [rhot[wo + train_size -1 + int(j*test_size)] for j in range(windows)]
 
-def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, operators: list | None = None, meas_ind: list| None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10):
+def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, sqo: list = [sx, sy, sz], tqo: list = tqo, operators: list | None = None, meas_ind: list| None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10):
     """
     Tests a trained QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291.
     After the evolution of the system a set of measurements is performed and the results are used to predict the next value of the input signal. The test is performed on multiple windows
@@ -141,6 +143,8 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
         H0 (np.ndarray | sp.csc_matrix | sp.csc_array): The initial Hamiltonian.
         c_ops (list): List of collapse operators for the system.
         dt (float): Time step for the evolution.
+        sqo (list): List of single qubit operators for optimized local measurements. Default to [σx, σy, σz].
+        tqo (list): List of two qubit operators for optimized two qubit measurements. Default to [σx⊗σx, σy⊗σy, σz⊗σz].
         operators (list): List of measurement operators.
         meas_ind (list): Where the operators must be measured.
         wo (int, optional): Wash out time for the reservoir. Defaults to 1000.
@@ -152,7 +156,7 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
     """
 
     Nq = int(np.log2(H0.shape[0]))
-    superd = Super_D(c_ops)
+    superd = (Super_D(c_ops))
     sk = np.array(sk)
     shape = (windows, test_size, sk.shape[1])
     y_pred = np.zeros(shape)
@@ -160,9 +164,10 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
         rho = rhof[j]
         y_pred[j][0] = sk[wo + train_size + int(j*test_size)]
         for i in tqdm(range(test_size-1)):
-            H = H0
+            H = H0.copy()
             for k in range(len(H_enc)):
-                H += ((1+y_pred[i][k])*H_enc[k])
+                H += ((1+y_pred[j][i][k])*H_enc[k])
+            H = csc_array(H, dtype = complex)
             superh = Super_H(H)
             superh = csc_array(superh, dtype = complex)
             rho = Lindblad_Propagator(superh, superd, dt, rho)
@@ -176,17 +181,14 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
                 if Nq == 1:
                     x_test.reshape(1, -1)
             else:
-                x_test = np.hstack((local_measurements(rho), two_qubits_measurements(rho, tqo), np.ones((1, 1))))
+                x_test = np.hstack((local_measurements(rho, operators = sqo,batchmode = False), two_qubits_measurements(rho, tqo)))
             x_test = np.real(x_test)
-
-            #One step prediction
             y_pred[j][i+1] = ridge.predict(x_test[0].reshape(1, -1))
-        # print(np.shape(x_test))
             for k in range(len(y_pred)):
-                if y_pred[j][i+1] < np.min(sk):
-                    y_pred[j][i+1] = np.min(sk)
-                if y_pred[j][i+1] > np.max(sk):
-                    y_pred[j][i+1] = np.max(sk)
+                if y_pred[j][i+1][k] < np.min(sk[:,k]):
+                    y_pred[j][i+1][k] = np.min(sk[:,k])
+                if y_pred[j][i+1][k] > np.max(sk[:,k]):
+                    y_pred[j][i+1][k] = np.max(sk[:,k])
     return y_pred
 
 def Continuous_Dissipation_RC(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False):

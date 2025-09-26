@@ -16,7 +16,82 @@ from typing import Union
 MatrixLike = Union[np.ndarray, list]
 SparseLike = Union[csc_array, csc_matrix]
 MatrixOrSparse = Union[np.ndarray, csc_array, csc_matrix]
-OperatorType = np.ndarray
+
+# =============================================================================
+# PAULI OPERATORS
+# =============================================================================
+
+def sigmap() -> np.ndarray:
+    """
+    Create the Pauli raising operator σ₊ = (σₓ + iσᵧ)/2.
+    
+    Returns:
+        np.ndarray: 2×2 raising operator matrix |0⟩⟨1|.
+    """
+    return np.array([[0, 1], [0, 0]], dtype=complex)
+
+def sigmam() -> np.ndarray:
+    """
+    Create the Pauli lowering operator σ₋ = (σₓ - iσᵧ)/2.
+    
+    Returns:
+        np.ndarray: 2×2 lowering operator matrix |1⟩⟨0|.
+    """
+    return np.array([[0, 0], [1, 0]], dtype=complex)
+
+def sigmax() -> np.ndarray:
+    """
+    Create the Pauli X operator (bit-flip gate).
+    
+    Returns:
+        np.ndarray: 2×2 Pauli X matrix [[0,1],[1,0]].
+    """
+    return np.array([[0, 1], [1, 0]], dtype=complex)
+
+def sigmay() -> np.ndarray:
+    """
+    Create the Pauli Y operator (bit and phase flip gate).
+    
+    Returns:
+        np.ndarray: 2×2 Pauli Y matrix [[0,-i],[i,0]].
+    """
+    return np.array([[0, -1j], [1j, 0]], dtype=complex)
+
+def sigmaz() -> np.ndarray:
+    """
+    Create the Pauli Z operator (phase-flip gate).
+    
+    Returns:
+        np.ndarray: 2×2 Pauli Z matrix [[1,0],[0,-1]].
+    """
+    return np.array([[1, 0], [0, -1]], dtype=complex)
+
+def hadamard() -> np.ndarray:
+    """
+    Create the Hadamard operator H.
+    
+    Returns:
+        np.ndarray: 2×2 Hadamard matrix (1/sqrt(2))*[[1,1],[1,-1]].
+    """
+    return (1/np.sqrt(2)) * (sigmax() + sigmaz())
+
+def proj1() -> np.ndarray:
+    """
+    Create the projection operator |1⟩⟨1|.
+    
+    Returns:
+        np.ndarray: 2×2 projection matrix [[0,0],[0,1]].
+    """
+    return 0.5 * (np.eye(2) - sigmaz())
+
+def proj0() -> np.ndarray:
+    """
+    Create the projection operator |0⟩⟨0|.
+    
+    Returns:
+        np.ndarray: 2×2 projection matrix [[1,0],[0,0]].
+    """
+    return 0.5 * (np.eye(2) + sigmaz())
 
 # =============================================================================
 # ALGEBRAIC OPERATIONS
@@ -102,7 +177,7 @@ def expect(state: np.ndarray, op: np.ndarray, batchmode: bool = True) -> Union[f
     Raises:
         ValueError: If input is not a valid quantum state.
     """
-    if is_state(state, batchmode)[1] == False:
+    if np.False_ in is_state(state, batchmode):
         raise ValueError("Input is not a valid quantum state.")
     state = ket_to_dm(state, batchmode)
     l = np.shape(state) 
@@ -110,10 +185,9 @@ def expect(state: np.ndarray, op: np.ndarray, batchmode: bool = True) -> Union[f
     if len(l) == 2:
         return np.trace(np.matmul(op, state))
     else:
-        print(state.shape)
         return np.einsum('ijk,kj->i', state, op)
 
-def local_measurements(rho: np.ndarray) -> np.ndarray:
+def local_measurements(rho: np.ndarray, operators: list = [sigmax(), sigmay(), sigmaz()], batchmode: bool = True) -> np.ndarray:
     """
     Perform optimized local Pauli measurements on each qubit.
     
@@ -124,7 +198,11 @@ def local_measurements(rho: np.ndarray) -> np.ndarray:
         np.ndarray: Measurement results array with shape (n_states, n_qubits*3).
                    For each qubit: [⟨σx⟩, ⟨σy⟩, ⟨σz⟩]
     """
-    operators = [sigmax(), sigmay(), sigmaz()]
+    if np.False_ in is_state(rho, batchmode):
+        raise ValueError("Input must be a quantum state or a list of quantum states.")
+    
+    rho = np.array(rho, dtype = complex)
+    
     Nq = int(np.log2(rho.shape[1]))
     shape = rho.shape
     if len(shape) > 2:
@@ -136,7 +214,7 @@ def local_measurements(rho: np.ndarray) -> np.ndarray:
     out = []
     for i in range(Nq):
         rho_red = ptrace(rho, [i])
-        for k in range(3):        
+        for k in range(len(operators)):        
             out.append(expect(rho_red, operators[k]))
     return np.array(out).T
 
@@ -158,7 +236,7 @@ def measure(states: MatrixLike, operators: list, indices_list: list, batchmode: 
     Raises:
         ValueError: If inputs are invalid quantum states or incompatible dimensions.
     """
-    if not is_state(states, batchmode)[1]:
+    if np.False_ in is_state(states, batchmode):
         raise ValueError("Input must be a quantum state or a list of quantum states.")
     states = ket_to_dm(states, batchmode)
     if not isinstance(operators, list) or not all(isinstance(op, np.ndarray) for op in operators):
@@ -277,52 +355,3 @@ def haar_random_unitary(n_qubits: int) -> np.ndarray:
     U = Q @ phases
     
     return U
-
-# =============================================================================
-# PAULI OPERATORS
-# =============================================================================
-
-def sigmap() -> OperatorType:
-    """
-    Create the Pauli raising operator σ₊ = (σₓ + iσᵧ)/2.
-    
-    Returns:
-        OperatorType: 2×2 raising operator matrix |0⟩⟨1|.
-    """
-    return np.array([[0, 1], [0, 0]], dtype=complex)
-
-def sigmam() -> OperatorType:
-    """
-    Create the Pauli lowering operator σ₋ = (σₓ - iσᵧ)/2.
-    
-    Returns:
-        OperatorType: 2×2 lowering operator matrix |1⟩⟨0|.
-    """
-    return np.array([[0, 0], [1, 0]], dtype=complex)
-
-def sigmax() -> OperatorType:
-    """
-    Create the Pauli X operator (bit-flip gate).
-    
-    Returns:
-        OperatorType: 2×2 Pauli X matrix [[0,1],[1,0]].
-    """
-    return np.array([[0, 1], [1, 0]], dtype=complex)
-
-def sigmay() -> OperatorType:
-    """
-    Create the Pauli Y operator (bit and phase flip gate).
-    
-    Returns:
-        OperatorType: 2×2 Pauli Y matrix [[0,-i],[i,0]].
-    """
-    return np.array([[0, -1j], [1j, 0]], dtype=complex)
-
-def sigmaz() -> OperatorType:
-    """
-    Create the Pauli Z operator (phase-flip gate).
-    
-    Returns:
-        OperatorType: 2×2 Pauli Z matrix [[1,0],[0,-1]].
-    """
-    return np.array([[1, 0], [0, -1]], dtype=complex)

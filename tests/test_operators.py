@@ -37,17 +37,17 @@ class TestPauliOperators:
         np.testing.assert_array_almost_equal(sz, expected)
         assert is_herm(sz)
     
-    def test_sigmap(self):
-        """Test raising operator σ+"""
-        sp = sigmap()
-        expected = np.array([[0, 1], [0, 0]], dtype=complex)
-        np.testing.assert_array_almost_equal(sp, expected)
-    
     def test_sigmam(self):
-        """Test lowering operator σ-"""
-        sm = sigmam()
-        expected = np.array([[0, 0], [1, 0]], dtype=complex)
+        """Test raising operator σ+"""
+        sm = sigmap()
+        expected = np.array([[0, 1], [0, 0]], dtype=complex)
         np.testing.assert_array_almost_equal(sm, expected)
+    
+    def test_sigmap(self):
+        """Test lowering operator σ-"""
+        sp = sigmam()
+        expected = np.array([[0, 0], [1, 0]], dtype=complex)
+        np.testing.assert_array_almost_equal(sp, expected)
     
     def test_pauli_relations(self):
         """Test Pauli operator relations"""
