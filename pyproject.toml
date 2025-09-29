@@ -21,4 +21,4 @@ license = "MIT"
 license-files = ["LICENSE.txt"]
 
 [project.urls]
-"Homepage" = "https://github.com/MarcoVetrano01/QuantumStuff"
+"Homepage" = "https://github.com/MarcoVetrano01/quantum_stuff"

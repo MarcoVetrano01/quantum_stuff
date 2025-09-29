@@ -2,7 +2,7 @@
 
 Extreme Learning Machines (ELM) and Reservoir Computing (RC) are supervised learning algorithms which exploit a random substrate as hidden layer in order to linearize the learning of a problem.
 
-![Reservoir Computing Diagram](images/Reservoir%20computing.png)
+![Reservoir Computing Diagram](QuantumStuff/images/Reservoir%20computing.png)
 
 In particular, in literature it is possible to find many implementation of RC and ELMs which exploits both randomly initialized neural networks (Echo State Networks), but also with physical systems whose dynamics is complex enough to be used as a processor of information. 
 
