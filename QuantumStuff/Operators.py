@@ -87,6 +87,15 @@ def proj0() -> np.ndarray:
     """
     return 0.5 * (np.eye(2) + sigmaz())
 
+def CNOT() -> np.ndarray:
+    """
+    Create the CNOT (Controlled-NOT) gate for two qubits.
+    
+    Returns:
+        np.ndarray: 4×4 CNOT gate matrix.
+    """
+    return tensor_product([proj0(), np.eye(2)]) + tensor_product([proj1(), sigmax()])
+
 # =============================================================================
 # ALGEBRAIC OPERATIONS
 # =============================================================================

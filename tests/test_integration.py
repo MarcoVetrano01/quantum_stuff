@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from QuantumStuff.States import zero, one, plus, random_qubit
-from QuantumStuff.Operators import sigmax, sigmay, sigmaz, expect, commutator
+from QuantumStuff.Operators import sigmax, sigmay, sigmaz, expect, commutator, CNOT
 from QuantumStuff.Evolution import evolve_unitary, evolve_lindblad
 from QuantumStuff.Metrics import fidelity, von_neumann_entropy, purity
 from QuantumStuff.utils import ket_to_dm, tensor_product, ptrace
@@ -26,17 +26,17 @@ class TestQuantumCircuitSimulation:
         
         # Apply Hadamard: |0⟩ → |+⟩
         H = (sigmax() + sigmaz()) / np.sqrt(2)
-        psi = evolve_unitary(H, psi)
+        psi = evolve_unitary(H, psi, batchmode = False)
         
         # Check we have |+⟩ state
         expected_plus = plus()
         assert np.isclose(abs(np.vdot(psi, expected_plus)), 1.0, atol=1e-10)
         
         # Apply Z gate: |+⟩ → |-⟩
-        psi = evolve_unitary(sigmaz(), psi)
+        psi = evolve_unitary(sigmaz(), psi, batchmode = False)
         
         # Apply Hadamard again: |-⟩ → |1⟩
-        psi = evolve_unitary(H, psi)
+        psi = evolve_unitary(H, psi, batchmode = False)
         
         # Check we have |1⟩ state
         expected_one = one()
@@ -51,21 +51,18 @@ class TestQuantumCircuitSimulation:
         H = (sigmax() + sigmaz()) / np.sqrt(2)
         I = np.eye(2)
         H_I = tensor_product([H, I])
-        psi = evolve_unitary(H_I, psi00)
+        psi = evolve_unitary(H_I, psi00, batchmode = False)
         
         # Apply CNOT gate
-        CNOT = np.array([[1, 0, 0, 0],
-                        [0, 1, 0, 0], 
-                        [0, 0, 0, 1],
-                        [0, 0, 1, 0]], dtype=complex)
-        psi_bell = evolve_unitary(CNOT, psi)
+        cnot = CNOT()
+        psi_bell = evolve_unitary(cnot, psi, batchmode = False)
         
         # Check we have Bell state (|00⟩ + |11⟩)/√2
         expected = np.array([1/np.sqrt(2), 0, 0, 1/np.sqrt(2)], dtype=complex)
         assert np.allclose(np.abs(psi_bell), np.abs(expected), atol=1e-10)
         
         # Verify entanglement by checking reduced density matrices
-        rho_bell = ket_to_dm(psi_bell)
+        rho_bell = ket_to_dm(psi_bell, batchmode = False)
         rho_A = ptrace(rho_bell, [0])  # First qubit
         
         # Reduced state should be maximally mixed
@@ -82,7 +79,7 @@ class TestDecoherenceSimulation:
     def test_t1_relaxation(self):
         """Test T1 (amplitude damping) process"""
         # Start in excited state |1⟩
-        psi0 = one()
+        psi0 = zero()
         H = np.zeros((2, 2), dtype=complex)  # No free evolution
         
         # Simulate amplitude damping
@@ -94,7 +91,7 @@ class TestDecoherenceSimulation:
         rho_t = evolve_lindblad(psi0, H, t, c_ops=c_ops)
         
         # Check that excited state population decays exponentially
-        pop_excited = [np.real(rho[1, 1]) for rho in rho_t]
+        pop_excited = [np.real(rho[0, 0]) for rho in rho_t]
         
         # At t=0, should be in |1⟩
         assert np.isclose(pop_excited[0], 1.0, atol=1e-10)
@@ -149,8 +146,8 @@ class TestQuantumMetricsWorkflow:
         # Calculate fidelities
         fidelities = []
         for state in states:
-            rho1 = ket_to_dm(target_state)
-            rho2 = ket_to_dm(state)
+            rho1 = ket_to_dm(target_state, batchmode = False)
+            rho2 = ket_to_dm(state, batchmode = False)
             f = fidelity(rho1, rho2)
             fidelities.append(f)
         
@@ -165,15 +162,15 @@ class TestQuantumMetricsWorkflow:
         
         # Product state |00⟩
         psi_product = tensor_product([zero(), zero()])
-        rho_product = ket_to_dm(psi_product)
+        rho_product = ket_to_dm(psi_product, batchmode = False)
         
         # Bell state (|00⟩ + |11⟩)/√2
         psi_bell = np.array([1/np.sqrt(2), 0, 0, 1/np.sqrt(2)], dtype=complex)
-        rho_bell = ket_to_dm(psi_bell)
+        rho_bell = ket_to_dm(psi_bell, batchmode = False)
         
         # Partially entangled state
         psi_partial = np.array([np.sqrt(0.8), 0, 0, np.sqrt(0.2)], dtype=complex)
-        rho_partial = ket_to_dm(psi_partial)
+        rho_partial = ket_to_dm(psi_partial, batchmode = False)
         
         # Calculate entanglement entropy (entropy of reduced state)
         entropies = []
@@ -204,7 +201,7 @@ class TestRandomStateProperties:
                 # Generate random state
                 if pure:
                     psi = random_qubit(n_qubits, pure=True, dm=False)
-                    rho = ket_to_dm(psi)
+                    rho = ket_to_dm(psi, batchmode = False)
                 else:
                     rho = random_qubit(n_qubits, pure=False, dm=True)
                 
@@ -219,7 +216,7 @@ class TestRandomStateProperties:
                 assert np.allclose(rho, rho.conj().T, atol=1e-10)
                 
                 # Check purity
-                P = purity(rho)
+                P = purity(rho, batchmode = False)
                 if pure:
                     assert np.isclose(P, 1.0, atol=1e-10)
                 else:

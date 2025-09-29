@@ -227,7 +227,7 @@ def Continuous_Dissipation_RC(sk: np.ndarray | list, y_target: np.ndarray | list
     if rho is None:
         rho = zero(dm = True, N = Nq)
     else:
-        if not is_state(rho)[1]:
+        if np.False_ in is_state(rho):
             raise ValueError("The provided initial state is not a valid density matrix.")
     if len(np.shape(sk)) == 1:
         sk = sk.reshape((len(sk),1))
