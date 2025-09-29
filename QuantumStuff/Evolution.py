@@ -20,18 +20,14 @@ def dissipator(state: MatrixLike, L: MatrixLike):
     """
     if len(L) == 0:
         return 0
-    check = is_state(state, batchmode = False)
     if len(np.shape(state)) == 3:
         raise ValueError("Batch mode is not supported")
-    if np.False_ in check:
-        raise ValueError("Input must be a valid quantum state (density matrix).")
     if not isinstance(L, (np.ndarray, list, csc_array, csc_matrix)):
         raise ValueError("L must be a numpy array or a list of numpy arrays.")
     L = np.asarray(L, dtype=complex)
         
     state = np.asarray(state, dtype=complex)
-    if check[0] == 1:
-        state = ket_to_dm(state, batchmode = False)
+    state = ket_to_dm(state, batchmode = False)
     if L.ndim == 2:
         LL = dag(L) @ L
         return (L @ state @ dag(L) - 0.5 * anticommutator(LL, state))
@@ -50,12 +46,7 @@ def evolve_lindblad(state0: MatrixLike, H: MatrixLike, t: MatrixLike, c_ops:list
     Returns:
         np.ndarray: Time-evolved quantum states at each time point in t.
     """
-    is_dm = is_state(state0, batchmode = False)
-
-    if np.False_ in is_dm:
-        raise ValueError("The state must be a valid quantum state")
-    if is_dm[0] == 1:
-        state0 = ket_to_dm(state0, batchmode = False)
+    state0 = ket_to_dm(state0, batchmode = False)
     n = nqubit(state0)
     state0 = np.array(state0, dtype = complex).ravel('F')
     t0 = t[0]
@@ -91,8 +82,6 @@ def evolve_unitary(U: MatrixOrSparse, state: MatrixOrSparse, batchmode: bool):
         state = csc_array(state, dtype = complex)
     
     isdm = is_state(state, batchmode)
-    if np.False_ in isdm:
-        raise ValueError("The state must be a valid quantum state")
     if isdm[0] == 1:
         return U @ state
     elif isdm[0] == 2:
@@ -134,10 +123,9 @@ def Lindblad_Propagator(SH: MatrixOrSparse, SD: MatrixOrSparse | None, dt: float
         np.ndarray: Time-evolved density matrix.
     """
     rho = np.asarray(rho, dtype = complex)
-    if ignore:
-        pass
-    elif np.False_ in is_state(rho, False):
-        raise ValueError("Input must be a valid quantum state.")
+    if not ignore:
+        # No need for explicit is_state check - ket_to_dm will validate and convert
+        rho = ket_to_dm(rho, False) if rho.ndim != 1 else operator2vector(ket_to_dm(vector2operator(rho), False))
     if SD == None:
         SD = csc_array(np.zeros_like(SH.toarray()))
     L = SH + SD

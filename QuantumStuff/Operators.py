@@ -171,8 +171,6 @@ def expect(state: np.ndarray, op: np.ndarray, batchmode: bool = True) -> Union[f
     Raises:
         ValueError: If input is not a valid quantum state.
     """
-    if np.False_ in is_state(state, batchmode):
-        raise ValueError("Input is not a valid quantum state.")
     state = ket_to_dm(state, batchmode)
     l = np.shape(state) 
 
@@ -192,9 +190,6 @@ def local_measurements(rho: np.ndarray, operators: list = [sigmax(), sigmay(), s
         np.ndarray: Measurement results array with shape (n_states, n_qubits*3).
                    For each qubit: [⟨σx⟩, ⟨σy⟩, ⟨σz⟩]
     """
-    if np.False_ in is_state(rho, batchmode):
-        raise ValueError("Input must be a quantum state or a list of quantum states.")
-    
     rho = np.array(rho, dtype = complex)
     
     Nq = int(np.log2(rho.shape[1]))
@@ -230,8 +225,6 @@ def measure(states: MatrixLike, operators: list, indices_list: list, batchmode: 
     Raises:
         ValueError: If inputs are invalid quantum states or incompatible dimensions.
     """
-    if np.False_ in is_state(states, batchmode):
-        raise ValueError("Input must be a quantum state or a list of quantum states.")
     states = ket_to_dm(states, batchmode)
     if not isinstance(operators, list) or not all(isinstance(op, np.ndarray) for op in operators):
         raise ValueError("Operators must be a list of numpy arrays.")

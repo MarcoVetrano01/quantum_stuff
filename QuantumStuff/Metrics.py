@@ -19,10 +19,7 @@ def fidelity(state1: MatrixLike, state2: MatrixLike):
     Returns:
         float: Fidelity between the two quantum states.
     """
-    check = is_state([state1, state2], batchmode = True)
-    if np.False_ in check:
-        raise TypeError("Both states must be quantum states.")
-    
+    # ket_to_dm will validate the states, so no need for redundant check
     state1 = np.asarray(state1, dtype = complex)
     state2 = np.asarray(state2, dtype = complex)
 
@@ -77,9 +74,7 @@ def mutual_info(state_total: MatrixLike, indices: list):
     state_total = np.asarray(state_total, dtype = complex)
     state_A = ptrace(state_total, indices[0])
     state_B = ptrace(state_total, indices[1])
-    check = np.array([is_state(state, batchmode = False) for state in [state_A, state_B, state_total]], dtype = object).flatten()
-    if np.False_ in check:
-        raise ValueError("All states must be valid quantum states.")
+    # ket_to_dm and von_neumann_entropy will validate states, no need for redundant check
     Na = nqubit(state_A)
     Nb = nqubit(state_B)
     Nab = nqubit(state_total)
@@ -112,9 +107,7 @@ def purity(state: MatrixLike, batchmode: bool):
     Returns:
         float: The purity of the quantum state.
     """
-    check = is_state(state, batchmode)
-    if np.False_ in check:
-        raise Exception("Input must be a quantum state or a list of quantum states.")
+    # ket_to_dm will validate the state, no need for redundant check
     state = ket_to_dm(state, batchmode = False)
     state = np.asarray(state, dtype = complex)
     return np.linalg.trace(state @ state)
@@ -138,17 +131,14 @@ def trace_distance(state1: MatrixLike, state2: MatrixLike | None = None):
     if not isinstance(state2, (np.ndarray, (list, type(None)))):
         raise TypeError("State 2 must be a list or numpy array or None")
     if state2 is not None:
-        check = is_state([state1,state2], batchmode = True)
-        if np.False_ in check:
-            raise TypeError("Both states must be valid quantum states")
+        # ket_to_dm will validate the states, no need for redundant check
         if np.shape(state1) != np.shape(state2):
             raise ValueError("Both states must have the same dimensions")
         
-        else:
-            state1 = np.asarray(state1, dtype = complex)
-            state2 = np.asarray(state2, dtype = complex)
-            states = ket_to_dm([state1,state2], batchmode = True)
-            dist = states[0] - states[1]
+        state1 = np.asarray(state1, dtype = complex)
+        state2 = np.asarray(state2, dtype = complex)
+        states = ket_to_dm([state1,state2], batchmode = True)
+        dist = states[0] - states[1]
     else:
         state1 = np.asarray(state1, dtype = complex)
         dist = state1
@@ -169,9 +159,7 @@ def von_neumann_entropy(state: MatrixLike):
     """
 
     state = np.asarray(state, dtype = complex)
-    check = is_state(state, batchmode = False)
-    if np.False_ in check:
-        raise Exception("Input is not a valid quantum state")
+    # ket_to_dm will validate the state, no need for redundant check
     state = ket_to_dm(state, batchmode = False)
     eigs = np.linalg.eigvalsh(state)
     entropy = np.sum(-eigs * np.log(eigs), axis = -1)

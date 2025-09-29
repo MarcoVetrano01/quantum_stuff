@@ -12,6 +12,33 @@ from .utils import MatrixLike, SparseLike, MatrixOrSparse
 from functools import reduce
 import plotly.graph_objects as go
 
+
+# =============================================================================
+# HELPER FUNCTIONS
+# =============================================================================
+
+def _create_multi_qubit_state(single_state: np.ndarray, N: int, dm: bool = False) -> np.ndarray:
+    """
+    Helper function to create multi-qubit states from single-qubit states.
+    
+    Args:
+        single_state: Single qubit state vector
+        N: Number of qubits 
+        dm: If True, return density matrix
+        
+    Returns:
+        Multi-qubit state vector or density matrix
+    """
+    if N == 1:
+        state = single_state
+    else:
+        state = reduce(np.kron, [single_state] * N)
+    
+    if dm:
+        return np.outer(state, state.conj())
+    return state
+
+
 # =============================================================================
 # COMPUTATIONAL BASIS STATES
 # =============================================================================
@@ -27,11 +54,7 @@ def zero(dm: bool = False, N: int = 1) -> np.ndarray:
         np.ndarray: The zero state, either as a vector or density matrix.
     """
     zero_state = np.array([1, 0], dtype=complex)
-    if N > 1:
-        zero_state = reduce(np.kron, [zero_state] * N)
-    if dm:
-        return np.outer(zero_state, zero_state.conj())
-    return zero_state
+    return _create_multi_qubit_state(zero_state, N, dm)
 
 
 def one(dm: bool = False, N: int = 1) -> np.ndarray:
@@ -45,11 +68,7 @@ def one(dm: bool = False, N: int = 1) -> np.ndarray:
         np.ndarray: The one state, either as a vector or density matrix.
     """
     one_state = np.array([0, 1], dtype=complex)
-    if N != 1:
-        one_state = reduce(np.kron, [one_state] * N)
-    if dm:
-        return np.outer(one_state, one_state.conj())
-    return one_state
+    return _create_multi_qubit_state(one_state, N, dm)
 
 
 # =============================================================================
@@ -66,12 +85,8 @@ def plus(dm: bool = False, N: int = 1) -> np.ndarray:
     Returns:
         np.ndarray: The plus state, either as a vector or density matrix.
     """
-    plus_state = (1/np.sqrt(2)) * (zero() + one())
-    if N != 1:
-        plus_state = reduce(np.kron, [plus_state] * N)
-    if dm:
-        return np.outer(plus_state, plus_state.conj())
-    return plus_state
+    plus_state = (1/np.sqrt(2)) * np.array([1, 1], dtype=complex)
+    return _create_multi_qubit_state(plus_state, N, dm)
 
 
 def minus(dm: bool = False, N: int = 1) -> np.ndarray:
@@ -84,12 +99,8 @@ def minus(dm: bool = False, N: int = 1) -> np.ndarray:
     Returns:
         np.ndarray: The minus state, either as a vector or density matrix.
     """
-    minus_state = (1/np.sqrt(2)) * (zero() - one())
-    if N != 1:
-        minus_state = reduce(np.kron, [minus_state] * N)
-    if dm:
-        return np.outer(minus_state, minus_state.conj())
-    return minus_state
+    minus_state = (1/np.sqrt(2)) * np.array([1, -1], dtype=complex)
+    return _create_multi_qubit_state(minus_state, N, dm)
 
 
 def right(dm: bool = False, N: int = 1) -> np.ndarray:
@@ -102,12 +113,8 @@ def right(dm: bool = False, N: int = 1) -> np.ndarray:
     Returns:
         np.ndarray: The right state, either as a vector or density matrix.
     """
-    right_state = (1/np.sqrt(2)) * (zero() + 1j * one())
-    if N != 1:
-        right_state = reduce(np.kron, [right_state] * N)
-    if dm:
-        return np.outer(right_state, right_state.conj())
-    return right_state
+    right_state = (1/np.sqrt(2)) * np.array([1, 1j], dtype=complex)
+    return _create_multi_qubit_state(right_state, N, dm)
 
 
 def left(dm: bool = False, N: int = 1) -> np.ndarray:
@@ -120,12 +127,8 @@ def left(dm: bool = False, N: int = 1) -> np.ndarray:
     Returns:
         np.ndarray: The left state, either as a vector or density matrix.
     """
-    left_state = (1/np.sqrt(2)) * (zero() - 1j * one())
-    if N != 1:
-        left_state = reduce(np.kron, [left_state] * N)
-    if dm:
-        return np.outer(left_state, left_state.conj())
-    return left_state
+    left_state = (1/np.sqrt(2)) * np.array([1, -1j], dtype=complex)
+    return _create_multi_qubit_state(left_state, N, dm)
 
 
 # =============================================================================
