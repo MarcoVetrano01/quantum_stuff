@@ -1,5 +1,5 @@
 import numpy as np
-from .utils import dag, is_state, is_herm, is_norm, tensor_product, ket_to_dm, ptrace
+from .utils import nqubit, dag, is_state, is_herm, is_norm, tensor_product, ket_to_dm, ptrace
 import warnings
 
 warnings.filterwarnings(
@@ -19,25 +19,18 @@ def fidelity(state1: np.ndarray | list, state2: np.ndarray | list):
     Returns:
         float: Fidelity between the two quantum states.
     """
-    check1 = is_state(state1)
-    check2 = is_state(state2)
-    if not (check1[1] and check2[1]):
+    check = is_state([state1, state2], batchmode = True)
+    if np.False_ in check:
         raise TypeError("Both states must be quantum states.")
-    if np.shape(state1) != np.shape(state2):
-        raise ValueError("Both states must have the same shape.")
     
     state1 = np.asarray(state1, dtype = complex)
     state2 = np.asarray(state2, dtype = complex)
 
-    if check1[0] == 1 or check1[0] == 2:
-        state1 = ket_to_dm(state1)
-        state2 = ket_to_dm(state2)
-
+    state1 = ket_to_dm(state1, batchmode = False)
+    state2 = ket_to_dm(state2, batchmode = False)
+    
     eigs = np.linalg.eigvals(state1 @ state2)
-    if len(state1.shape) != 2:
-        return np.sum(np.sqrt(eigs), axis = 1)
-    else:
-        return(np.sum(np.sqrt(eigs)))
+    return np.sum(np.sqrt(eigs))**2
 
 def Holevo_Info(states: np.ndarray | list, probabilities: np.ndarray | list):
 
@@ -54,10 +47,10 @@ def Holevo_Info(states: np.ndarray | list, probabilities: np.ndarray | list):
     Returns:
         float: The Holevo information of the ensemble.
     """
-    check = is_state(states)
-    if not check[1]:
+    check = is_state(states, batchmode = True)
+    if np.False_ in check:
         raise ValueError("states must be a list or array of quantum states.")
-    states = ket_to_dm(states)
+    states = ket_to_dm(states, batchmode = True)
     if not isinstance(probabilities, (np.ndarray, list)):
         raise ValueError("Probabilities must be a list or array of probabilities.")
     if np.sum(probabilities) != 1:
@@ -67,7 +60,7 @@ def Holevo_Info(states: np.ndarray | list, probabilities: np.ndarray | list):
     return von_neumann_entropy(eta) - np.average(von_neumann_entropy(states), weights = probabilities, axis = 0)
 
 
-def mutual_info(state_total: np.ndarray | list, state_A: np.ndarray | list, state_B: np.ndarray | list):
+def mutual_info(state_total: np.ndarray | list, indices: list):
     """
     Calculate the mutual information between two subsystems A and B given a total state.
     The mutual information is defined as:
@@ -76,28 +69,31 @@ def mutual_info(state_total: np.ndarray | list, state_A: np.ndarray | list, stat
     where S(X) is the von Neumann entropy of subsystem X.
     Args:
         state_total (np.ndarray | list): The total quantum state, can be a density matrix or a ket.
-        state_A (np.ndarray | list): The quantum state of subsystem A.
-        state_B (np.ndarray | list): The quantum state of subsystem B.
+        indices (list): indices of the qubits to leave untraced in the bipartition (e.g. format [[0],[1]])
     Returns:
         float: The mutual information I(A:B).
     """
-    check1 = is_state(state_A)
-    check2 = is_state(state_B)
-    check3 = is_state(state_total)
-    if not (check1[1] and check2[1] and check3[1]):
+
+    state_total = np.asarray(state_total, dtype = complex)
+    state_A = ptrace(state_total, indices[0])
+    state_B = ptrace(state_total, indices[1])
+    check = np.array([is_state(state, batchmode = False) for state in [state_A, state_B, state_total]], dtype = object).flatten()
+    if np.False_ in check:
         raise ValueError("All states must be valid quantum states.")
-    Na = int(np.log2(state_A.shape[-1]))
-    Nb = int(np.log2(state_B.shape[-1]))
-    if Na + Nb != int(np.log2(state_total.shape[-1])):
+    Na = nqubit(state_A)
+    Nb = nqubit(state_B)
+    Nab = nqubit(state_total)
+    
+    if Na + Nb != Nab:
         raise ValueError("The dimensions of the states do not match: "
                          "dim(A) + dim(B) must equal dim(total).")
     dimsA = state_A.ndim
     dimsB = state_B.ndim
     if dimsA != dimsB:
         raise ValueError("The dimensions of the states A and B must match.")
-    state_A = ket_to_dm(state_A)
-    state_B = ket_to_dm(state_B)
-    state_total = ket_to_dm(state_total)
+    state_A = ket_to_dm(state_A, batchmode = False)
+    state_B = ket_to_dm(state_B, batchmode = False)
+    state_total = ket_to_dm(state_total, batchmode = False)
     
     state_total = np.asarray(state_total, dtype = complex)
     state_A = np.asarray(state_A, dtype = complex)
@@ -105,21 +101,21 @@ def mutual_info(state_total: np.ndarray | list, state_A: np.ndarray | list, stat
     
     return von_neumann_entropy(state_A) + von_neumann_entropy(state_B) - von_neumann_entropy(state_total)
 
-def purity(state: np.ndarray | list):
+def purity(state: np.ndarray | list, batchmode: bool):
     """
     Computes the purity of a quantum state.
     The purity is defined as the trace of the square of the density matrix.
     For a pure state, the purity is 1, and for a mixed state, it is less than 1 and decreases to a minimum of 1/2^Nqbits, where Nqbits is the number of qubits.
     Args:
         state (np.ndarray | list): The density matrix of the quantum state.
+        batchmode (bool): If True, process a batch of states.
     Returns:
         float: The purity of the quantum state.
     """
-    check = is_state(state)
-    if not check[1]:
+    check = is_state(state, batchmode)
+    if np.False_ in check:
         raise Exception("Input must be a quantum state or a list of quantum states.")
-    if check[0] != 3:
-        state = ket_to_dm(state)
+    state = ket_to_dm(state, batchmode = False)
     state = np.asarray(state, dtype = complex)
     return np.linalg.trace(state @ state)
 
@@ -142,25 +138,23 @@ def trace_distance(state1: np.ndarray | list, state2: np.ndarray | list | None =
     if not isinstance(state2, (np.ndarray, (list, type(None)))):
         raise TypeError("State 2 must be a list or numpy array or None")
     if state2 is not None:
-        check1 = is_state(state1)
-        check2 = is_state(state2)
-        if not (check1[1] or check2[1]):
+        check = is_state([state1,state2], batchmode = True)
+        if np.False_ in check:
             raise TypeError("Both states must be valid quantum states")
         if np.shape(state1) != np.shape(state2):
             raise ValueError("Both states must have the same dimensions")
         
         else:
             state1 = np.asarray(state1, dtype = complex)
-            state2 = np.asarray(state2, dtype = complex) 
-            state1 = ket_to_dm(state1)
-            state2 = ket_to_dm(state2)
-            dist = state1 - state2
+            state2 = np.asarray(state2, dtype = complex)
+            states = ket_to_dm([state1,state2], batchmode = True)
+            dist = states[0] - states[1]
     else:
         state1 = np.asarray(state1, dtype = complex)
         dist = state1
-    return 0.5*np.sqrt(np.linalg.trace(dist @ dag(dist)))
+    return np.real(0.5*(np.linalg.trace(np.sqrt(dist@dag(dist)))))
 
-def von_neumann_entropy(state: np.ndarray):
+def von_neumann_entropy(state: np.ndarray | list):
     """
     Calculate the von Neumann entropy of a quantum state.
     The von Neumann entropy is defined as:
@@ -174,16 +168,13 @@ def von_neumann_entropy(state: np.ndarray):
         np.ndarray: The von Neumann entropy of the state.
     """
 
-    check = is_state(state)
-    if not check[1]:
-        raise Exception("Input is not a valid quantum state")
-    if check[0] != 3:
-        state = ket_to_dm(state)
-
     state = np.asarray(state, dtype = complex)
-
+    check = is_state(state, batchmode = False)
+    if np.False_ in check:
+        raise Exception("Input is not a valid quantum state")
+    state = ket_to_dm(state, batchmode = False)
     eigs = np.linalg.eigvalsh(state)
-    entropy = np.sum(-eigs * np.log2(eigs), axis = -1)
+    entropy = np.sum(-eigs * np.log(eigs), axis = -1)
     if np.shape(entropy) == ():
         entropy = np.array([entropy])
     entropy[np.where(np.isnan(entropy))] = 0

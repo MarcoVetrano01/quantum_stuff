@@ -297,8 +297,8 @@ def nqubit(op: MatrixLike) -> int:
     if not isinstance(op, (np.ndarray, list)):
         raise TypeError("Input must be a numpy array or a list of arrays.")
     op = np.asarray(op, dtype=complex)
-    op = ket_to_dm(op, batchmode= False)
-    
+    if len(op.shape) == 1:
+        op = ket_to_dm(op, batchmode = False)
     return int(np.log2(op.shape[1])) if isinstance(op, (np.ndarray, (list, np.array))) else 0
 
 def pauli_basis(N, normalized=True):

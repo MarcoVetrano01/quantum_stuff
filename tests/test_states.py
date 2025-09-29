@@ -127,13 +127,13 @@ class TestBlochVector:
         """Test Bloch vectors for computational basis states"""
         # |0⟩ state should give (0, 0, 1)
         rho0 = zero(dm=True)
-        bloch0 = bloch_vector(rho0)
+        bloch0 = bloch_vector(rho0, batchmode = False)
         expected0 = np.array([0, 0, 1])
         np.testing.assert_array_almost_equal(bloch0.flatten(), expected0, decimal=10)
         
         # |1⟩ state should give (0, 0, -1)
         rho1 = one(dm=True)
-        bloch1 = bloch_vector(rho1)
+        bloch1 = bloch_vector(rho1, batchmode = False)
         expected1 = np.array([0, 0, -1])
         np.testing.assert_array_almost_equal(bloch1.flatten(), expected1, decimal=10)
     
@@ -141,13 +141,13 @@ class TestBlochVector:
         """Test Bloch vectors for superposition states"""
         # |+⟩ state should give (1, 0, 0)
         rho_plus = plus(dm=True)
-        bloch_plus = bloch_vector(rho_plus)
+        bloch_plus = bloch_vector(rho_plus, batchmode = False)
         expected_plus = np.array([1, 0, 0])
         np.testing.assert_array_almost_equal(bloch_plus.flatten(), expected_plus, decimal=10)
         
         # |-⟩ state should give (-1, 0, 0)
         rho_minus = minus(dm=True)
-        bloch_minus = bloch_vector(rho_minus)
+        bloch_minus = bloch_vector(rho_minus, batchmode = False)
         expected_minus = np.array([-1, 0, 0])
         np.testing.assert_array_almost_equal(bloch_minus.flatten(), expected_minus, decimal=10)
     
@@ -155,20 +155,20 @@ class TestBlochVector:
         """Test Bloch vectors for Y-basis states"""
         # |R⟩ state should give (0, 1, 0)
         rho_right = right(dm=True)
-        bloch_right = bloch_vector(rho_right)
+        bloch_right = bloch_vector(rho_right, batchmode = False)
         expected_right = np.array([0, 1, 0])
         np.testing.assert_array_almost_equal(bloch_right.flatten(), expected_right, decimal=10)
         
         # |L⟩ state should give (0, -1, 0)
         rho_left = left(dm=True)
-        bloch_left = bloch_vector(rho_left)
+        bloch_left = bloch_vector(rho_left, batchmode = False)
         expected_left = np.array([0, -1, 0])
         np.testing.assert_array_almost_equal(bloch_left.flatten(), expected_left, decimal=10)
     
     def test_bloch_vector_batch(self):
         """Test Bloch vector calculation for batch of states"""
         states = np.array([zero(dm=True), one(dm=True), plus(dm=True)])
-        bloch_vectors = bloch_vector(states)
+        bloch_vectors = bloch_vector(states, batchmode = True)
         
         assert bloch_vectors.shape == (3, 3)
         
@@ -183,7 +183,7 @@ class TestBlochVector:
                       right(dm=True), left(dm=True)]
         
         for rho in pure_states:
-            bloch = bloch_vector(rho)
+            bloch = bloch_vector(rho, batchmode = False)
             length = np.linalg.norm(bloch)
             assert np.isclose(length, 1.0, atol=1e-10)
     
@@ -191,13 +191,13 @@ class TestBlochVector:
         """Test Bloch vector for a single mixed state"""
         # Maximally mixed state (identity/2) should give (0, 0, 0)
         rho_mixed = np.eye(2, dtype=complex) / 2
-        bloch_mixed = bloch_vector(rho_mixed)
+        bloch_mixed = bloch_vector(rho_mixed, batchmode = False)
         expected_mixed = np.array([0, 0, 0])
         np.testing.assert_array_almost_equal(bloch_mixed.flatten(), expected_mixed, decimal=10)
         
         # Partially mixed state: 0.8|0⟩⟨0| + 0.2|1⟩⟨1|
         rho_partial = 0.8 * zero(dm=True) + 0.2 * one(dm=True)
-        bloch_partial = bloch_vector(rho_partial)
+        bloch_partial = bloch_vector(rho_partial, batchmode = False)
         expected_partial = np.array([0, 0, 0.6])  # (0.8 - 0.2) = 0.6 along z-axis
         np.testing.assert_array_almost_equal(bloch_partial.flatten(), expected_partial, decimal=10)
         
@@ -217,7 +217,7 @@ class TestBlochVector:
         rho_partial_x = 0.6 * plus(dm=True) + 0.4 * minus(dm=True)
         
         mixed_states = np.array([rho_maximally_mixed, rho_partial_z, rho_partial_x])
-        bloch_vectors = bloch_vector(mixed_states)
+        bloch_vectors = bloch_vector(mixed_states, batchmode = True)
         
         assert bloch_vectors.shape == (3, 3)
         

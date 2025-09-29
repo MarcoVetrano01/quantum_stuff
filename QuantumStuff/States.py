@@ -180,7 +180,7 @@ def random_qubit(n_qubits: int, pure: bool = False, dm: bool = True) -> Union[St
 # BLOCH SPHERE REPRESENTATION
 # =============================================================================
 
-def bloch_vector(rho: MatrixLike) -> np.ndarray:
+def bloch_vector(rho: MatrixLike, batchmode: bool) -> np.ndarray:
     """
     Calculate the Bloch vector for a given quantum state ρ.
     
@@ -189,11 +189,12 @@ def bloch_vector(rho: MatrixLike) -> np.ndarray:
     
     Args:
         rho (MatrixLike): The quantum state, either a ket or a density matrix or a list of states.
+        batchmode (Bool): If True, process a batch of states.
     Returns:
         np.ndarray: The Bloch vector components (x, y, z).
     """
     rho_array = np.array(rho, dtype = complex)
-    bloch_vec = np.real(local_measurements(rho_array))
+    bloch_vec = np.real(local_measurements(rho_array, batchmode = batchmode))
     return bloch_vec
 
 
