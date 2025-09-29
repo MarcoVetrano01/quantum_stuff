@@ -6,17 +6,11 @@ Functions are organized by functionality for better code navigation.
 """
 
 import numpy as np
-from .utils import is_state, tensor_product, ket_to_dm, ptrace, nqubit, dag, validate_matrix_types
+from .utils import is_state, tensor_product, ket_to_dm, ptrace, nqubit, dag, validate_matrix_types, MatrixLike, MatrixOrSparse, SparseLike
 from itertools import combinations
 from scipy.special import comb
 from scipy.sparse import csc_array, kron, csc_matrix, dia_matrix
 from typing import Union
-
-# Type aliases for better code readability
-MatrixLike = Union[np.ndarray, list]
-SparseLike = Union[csc_array, csc_matrix]
-MatrixOrSparse = Union[np.ndarray, csc_array, csc_matrix]
-
 # =============================================================================
 # PAULI OPERATORS
 # =============================================================================

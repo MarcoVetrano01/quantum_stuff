@@ -1,6 +1,6 @@
 from scipy.integrate import solve_ivp
 import numpy as np
-from .utils import is_state, is_herm, dag, ket_to_dm, operator2vector, vector2operator, nqubit
+from .utils import is_state, is_herm, dag, ket_to_dm, operator2vector, vector2operator, nqubit, MatrixLike, MatrixOrSparse, SparseLike
 from .Operators import anticommutator, commutator
 from .States import zero
 from scipy.sparse.linalg import expm_multiply
@@ -9,7 +9,7 @@ from scipy.linalg import expm
 from tqdm import tqdm
 
 
-def dissipator(state: np.ndarray | list, L: np.ndarray | list):
+def dissipator(state: MatrixLike, L: MatrixLike):
     """
     Dissipator for a Lindblad operator L acting on the state ρ.
     Args:
@@ -38,10 +38,17 @@ def dissipator(state: np.ndarray | list, L: np.ndarray | list):
     else:
         LL = dag(L) @ L
         return np.sum(L @ state @ dag(L)- 0.5 *(LL @ state + (state @ LL.transpose((1,2,0))).transpose(2,1,0)),0)
-    
-def evolve_lindblad(state0: np.ndarray | list, H: np.ndarray, t: np.ndarray, c_ops:list = []):
+
+def evolve_lindblad(state0: MatrixLike, H: MatrixLike, t: MatrixLike, c_ops:list = []):
     """
     Evolve a quantum state under the Lindblad equation with improved numerical stability.
+    Args:
+        state0 (MatrixLike): Initial quantum state (density matrix or ket).
+        H (MatrixLike): Hamiltonian operator.
+        t (MatrixLike): Array of time points for the evolution.
+        c_ops (list): List of jump operators.
+    Returns:
+        np.ndarray: Time-evolved quantum states at each time point in t.
     """
     is_dm = is_state(state0, batchmode = False)
 
@@ -60,12 +67,12 @@ def evolve_lindblad(state0: np.ndarray | list, H: np.ndarray, t: np.ndarray, c_o
     
     return solution.y.reshape((2**n,2**n, len(t)), order='F').transpose((2,0,1))
 
-def evolve_unitary(U: np.ndarray | csc_array | csc_matrix, state: np.ndarray | list | csc_array | csc_matrix, batchmode: bool):
+def evolve_unitary(U: MatrixOrSparse, state: MatrixOrSparse, batchmode: bool):
     """
     Evolve a quantum state using a unitary operator.
     Args:
-        U (np.ndarray | csc_array | csc_matrix): Unitary operator.
-        state (np.ndarray | list): Quantum state to evolve.
+        U (MatrixOrSparse): Unitary operator.
+        state (MatrixOrSparse): Quantum state to evolve.
         batchmode (bool): If True, process a batch of states.
     Returns:
         np.ndarray: Evolved quantum state.
@@ -93,12 +100,12 @@ def evolve_unitary(U: np.ndarray | csc_array | csc_matrix, state: np.ndarray | l
     else:
         return U @ state @ dag(U)
 
-def interaction(op: np.ndarray | list, J: np.ndarray | list):
+def interaction(op: MatrixLike, J: MatrixLike):
     """
     Create an interaction Hamiltonian for a system with local operators `op` and coupling matrix `J`.
     Args:
-        op (np.ndarray | list): List of local operators.
-        J (np.ndarray | list): Coupling matrix or list of coupling strengths.
+        op (MatrixLike): List of local operators.
+        J (MatrixLike): Coupling matrix or list of coupling strengths.
     Returns:
         np.ndarray: Interaction Hamiltonian as a dense matrix.
     """
@@ -115,7 +122,7 @@ def interaction(op: np.ndarray | list, J: np.ndarray | list):
     result = np.tensordot(J, np.matmul(op[:,None], op[None,:]),axes = ([ax - 2, ax - 1], [0,1]))
     return result
 
-def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix | None, dt: float, rho: np.ndarray, ignore = False):
+def Lindblad_Propagator(SH: MatrixOrSparse, SD: MatrixOrSparse | None, dt: float, rho: MatrixLike, ignore = False):
     """
     Lindblad propagator for Lindblad equation
     Args:
@@ -126,6 +133,7 @@ def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix
     Returns:
         np.ndarray: Time-evolved density matrix.
     """
+    rho = np.asarray(rho, dtype = complex)
     if ignore:
         pass
     elif np.False_ in is_state(rho, False):
@@ -141,7 +149,7 @@ def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix
     else:
         return expm(L * dt) @ rho
 
-def Liouvillian(t: float, state: np.ndarray, H: np.ndarray, c_ops: list |np.ndarray):
+def Liouvillian(t: float, state: MatrixLike, H: MatrixLike, c_ops: list):
     """
     Liouvillian for the Lindblad equation.
     Args:
@@ -189,11 +197,14 @@ def random_coupling(Js: float, sites: int):
     J = J + J.T
     return J
 
-def Super_D(c_ops = []):
+def Super_D(c_ops: list = []):
     """
     Super operator for Lindblad equation
-    :c_ops: list of collapse operators multiplied by their decay rates
-    :return: super dissipator
+    SD = ∑ (L*⊗L - 1/2(I⊗L†L + (LᵀL*)⊗I))
+    Args:
+        c_ops (list): list of collapse operators multiplied by their decay rates
+    Returns:
+        MatrixOrSparse: super dissipator
     """
     if len(c_ops) == 0:
         return None
@@ -216,11 +227,14 @@ def Super_D(c_ops = []):
             superd += (np.kron(c.conj(), c) - 0.5 * (np.kron(SI, LL) + np.kron(LL.T, SI)))
     return superd
 
-def Super_H(H: np.ndarray | csc_matrix | csc_array):
+def Super_H(H: MatrixOrSparse):
     """
     Super operator for Hamiltonian
-    :H: Hamiltonian
-    :return: super hamiltonian
+    SH = -1j(I⊗H - Hᵀ⊗I)
+    Args:
+        H (MatrixOrSparse): Hamiltonian operator.
+    Returns:
+        MatrixOrSparse: super hamiltonian
     """
     is_sparse = isinstance(H, (csc_matrix, csc_array))
     N = np.shape(H)[0]

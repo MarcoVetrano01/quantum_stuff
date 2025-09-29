@@ -8,23 +8,15 @@ Functions are organized by functionality for better code navigation.
 
 import numpy as np
 from .Operators import haar_random_unitary, local_measurements
+from .utils import MatrixLike, SparseLike, MatrixOrSparse
 from functools import reduce
 import plotly.graph_objects as go
-import string
-import random
-from typing import Union
-
-# Type aliases for better code readability
-MatrixLike = Union[np.ndarray, list]
-StateVector = np.ndarray
-DensityMatrix = np.ndarray
-
 
 # =============================================================================
 # COMPUTATIONAL BASIS STATES
 # =============================================================================
 
-def zero(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
+def zero(dm: bool = False, N: int = 1) -> np.ndarray:
     """
     Creates the zero state |0⟩ for one or multiple qubits.
     
@@ -32,7 +24,7 @@ def zero(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
         dm (bool): If True, returns the density matrix representation.
         N (int): Number of qubits.
     Returns:
-        Union[StateVector, DensityMatrix]: The zero state, either as a vector or density matrix.
+        np.ndarray: The zero state, either as a vector or density matrix.
     """
     zero_state = np.array([1, 0], dtype=complex)
     if N > 1:
@@ -42,7 +34,7 @@ def zero(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
     return zero_state
 
 
-def one(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
+def one(dm: bool = False, N: int = 1) -> np.ndarray:
     """
     Creates the one state |1⟩ for one or multiple qubits.
     
@@ -50,7 +42,7 @@ def one(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
         dm (bool): If True, returns the density matrix representation.
         N (int): Number of qubits.
     Returns:
-        Union[StateVector, DensityMatrix]: The one state, either as a vector or density matrix.
+        np.ndarray: The one state, either as a vector or density matrix.
     """
     one_state = np.array([0, 1], dtype=complex)
     if N != 1:
@@ -64,7 +56,7 @@ def one(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
 # SUPERPOSITION STATES
 # =============================================================================
 
-def plus(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
+def plus(dm: bool = False, N: int = 1) -> np.ndarray:
     """
     Creates the plus state |+⟩ = (|0⟩ + |1⟩)/√2 for one or multiple qubits.
     
@@ -72,7 +64,7 @@ def plus(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
         dm (bool): If True, returns the density matrix representation.
         N (int): Number of qubits.
     Returns:
-        Union[StateVector, DensityMatrix]: The plus state, either as a vector or density matrix.
+        np.ndarray: The plus state, either as a vector or density matrix.
     """
     plus_state = (1/np.sqrt(2)) * (zero() + one())
     if N != 1:
@@ -82,7 +74,7 @@ def plus(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
     return plus_state
 
 
-def minus(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
+def minus(dm: bool = False, N: int = 1) -> np.ndarray:
     """
     Creates the minus state |-⟩ = (|0⟩ - |1⟩)/√2 for one or multiple qubits.
     
@@ -90,7 +82,7 @@ def minus(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
         dm (bool): If True, returns the density matrix representation.
         N (int): Number of qubits.
     Returns:
-        Union[StateVector, DensityMatrix]: The minus state, either as a vector or density matrix.
+        np.ndarray: The minus state, either as a vector or density matrix.
     """
     minus_state = (1/np.sqrt(2)) * (zero() - one())
     if N != 1:
@@ -100,7 +92,7 @@ def minus(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
     return minus_state
 
 
-def right(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
+def right(dm: bool = False, N: int = 1) -> np.ndarray:
     """
     Creates the right state |R⟩ = (|0⟩ + i|1⟩)/√2 for one or multiple qubits.
     
@@ -108,7 +100,7 @@ def right(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
         dm (bool): If True, returns the density matrix representation.
         N (int): Number of qubits.
     Returns:
-        Union[StateVector, DensityMatrix]: The right state, either as a vector or density matrix.
+        np.ndarray: The right state, either as a vector or density matrix.
     """
     right_state = (1/np.sqrt(2)) * (zero() + 1j * one())
     if N != 1:
@@ -118,7 +110,7 @@ def right(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
     return right_state
 
 
-def left(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
+def left(dm: bool = False, N: int = 1) -> np.ndarray:
     """
     Creates the left state |L⟩ = (|0⟩ - i|1⟩)/√2 for one or multiple qubits.
     
@@ -126,7 +118,7 @@ def left(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
         dm (bool): If True, returns the density matrix representation.
         N (int): Number of qubits.
     Returns:
-        Union[StateVector, DensityMatrix]: The left state, either as a vector or density matrix.
+        np.ndarray: The left state, either as a vector or density matrix.
     """
     left_state = (1/np.sqrt(2)) * (zero() - 1j * one())
     if N != 1:
@@ -140,7 +132,7 @@ def left(dm: bool = False, N: int = 1) -> Union[StateVector, DensityMatrix]:
 # RANDOM STATE GENERATION
 # =============================================================================
 
-def random_qubit(n_qubits: int, pure: bool = False, dm: bool = True) -> Union[StateVector, DensityMatrix]:
+def random_qubit(n_qubits: int, pure: bool = False, dm: bool = True) -> np.ndarray:
     """
     Generate a random quantum state for n_qubits using Haar random unitaries.
     
@@ -150,7 +142,7 @@ def random_qubit(n_qubits: int, pure: bool = False, dm: bool = True) -> Union[St
         dm (bool): If True, return density matrix representation. If False, return state vector (only for pure states).
     
     Returns:
-        Union[StateVector, DensityMatrix]: A random quantum state
+        np.ndarray: A random quantum state
     """
     dim = 2**n_qubits
     U = haar_random_unitary(n_qubits)
