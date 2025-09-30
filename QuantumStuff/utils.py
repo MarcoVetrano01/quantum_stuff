@@ -139,7 +139,7 @@ def is_norm(A: MatrixOrSparse):
     
     
 
-def is_state(state: np.ndarray, batchmode: bool = True):
+def is_state(state: np.ndarray, batchmode: bool = True, tol: int = 1e-7):
     """
     Checks if a given state is a valid quantum state and categorizes it.
     
@@ -191,7 +191,6 @@ def is_state(state: np.ndarray, batchmode: bool = True):
     if not check1:
         return check
     eigs = np.linalg.eigvalsh(state)
-    tol = 1e-8
     eigs[np.abs(eigs) < tol] = 0
     check = np.all(eigs>= 0)
     if not check:
