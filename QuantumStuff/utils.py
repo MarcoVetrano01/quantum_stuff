@@ -139,7 +139,7 @@ def is_norm(A: MatrixOrSparse):
     
     
 
-def is_state(state: np.ndarray, batchmode: bool = True, tol: int = 1e-7):
+def is_state(state: np.ndarray, batchmode: bool = True, tol: int = 1e-6):
     """
     Checks if a given state is a valid quantum state and categorizes it.
     
@@ -208,7 +208,7 @@ def is_state(state: np.ndarray, batchmode: bool = True, tol: int = 1e-7):
 # STATE CONVERSION
 # =============================================================================
     
-def ket_to_dm(state: MatrixLike, batchmode: bool) -> np.ndarray:
+def ket_to_dm(state: MatrixLike, batchmode: bool, tol:float = 1e-7) -> np.ndarray:
     """
     Convert a ket to a density matrix.
     
@@ -219,7 +219,7 @@ def ket_to_dm(state: MatrixLike, batchmode: bool) -> np.ndarray:
         np.ndarray: The corresponding density matrix.
     """
     
-    check = is_state(state, batchmode)
+    check = is_state(state, batchmode, tol)
     if check[0] == 3:
         return state
     if not isinstance(check[0], int):
