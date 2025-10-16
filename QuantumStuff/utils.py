@@ -81,7 +81,8 @@ def is_herm(A: MatrixOrSparse):
     # Handle single sparse matrix
     if isinstance(A, (csc_array, csc_matrix)):
         return np.allclose(A.toarray(), A.conj().T.toarray())
-    
+    if isinstance(A, np.ndarray):
+        return np.allclose(A, dag(A))
     # Handle list of matrices
     if isinstance(A, list):
         result = []

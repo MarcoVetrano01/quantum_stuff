@@ -117,7 +117,7 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
     if meas_ind is not None or operators is not None:
         if len(meas_ind) == 0:
             meas_ind = [[] for i in range(len(operators))]
-        x_train = measure(rhot[wo:train_size], operators, meas_ind)
+        x_train = measure(rhot[wo:wo +train_size], operators, meas_ind)
     else:
         x_train = np.hstack((local_measurements(rhot[wo: wo + train_size], sqo), two_qubits_measurements(rhot[wo: wo + train_size], tqo)))
     
@@ -160,6 +160,8 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
     sk = np.array(sk)
     shape = (windows, test_size, sk.shape[1])
     y_pred = np.zeros(shape)
+    if not isinstance(H_enc, list):
+        H_enc = [H_enc]
     for j in range(windows):
         rho = rhof[j]
         y_pred[j][0] = sk[wo + train_size + int(j*test_size)]
@@ -184,7 +186,7 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
                 x_test = np.hstack((local_measurements(rho, operators = sqo,batchmode = False), two_qubits_measurements(rho, tqo)))
             x_test = np.real(x_test)
             y_pred[j][i+1] = ridge.predict(x_test[0].reshape(1, -1))
-            for k in range(len(y_pred)):
+            for k in range(y_pred.shape[2]):
                 if y_pred[j][i+1][k] < np.min(sk[:,k]):
                     y_pred[j][i+1][k] = np.min(sk[:,k])
                 if y_pred[j][i+1][k] > np.max(sk[:,k]):
