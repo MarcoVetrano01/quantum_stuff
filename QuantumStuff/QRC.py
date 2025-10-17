@@ -71,6 +71,9 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         H = csc_array(H, dtype = complex)
         superh = csc_array(Super_H(H), dtype = complex)
         state = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
+        if not ignore:
+            state = 0.5*(state + dag(state))
+            state /= np.trace(state)
         state_t[i] = state
 
     return state_t
@@ -173,6 +176,8 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
             superh = Super_H(H)
             superh = csc_array(superh, dtype = complex)
             rho = Lindblad_Propagator(superh, superd, dt, rho)
+            rho = 0.5*(rho + dag(rho))
+            rho /= np.trace(rho)
             
             #Measurements
             if operators is not None and meas_ind is not None:

@@ -172,6 +172,28 @@ def random_qubit(n_qubits: int, pure: bool = False, dm: bool = True) -> np.ndarr
 
 
 # =============================================================================
+# BELL BASIS
+# =============================================================================
+
+
+def phi_plus():
+    '''Returns the Bell state |Φ+> = (|00> + |11>)/√2'''
+    return 1/np.sqrt(2) * (np.kron(zero(), zero) + np.kron(one(), one()))
+
+def phi_minus():
+    '''Returns the Bell state |Φ-> = (|00> - |11>)/√2'''
+    return 1/np.sqrt(2) * (np.kron(zero(), zero) - np.kron(one(), one()))
+
+def psi_plus():
+    '''Returns the Bell state |Ψ+> = (|01> + |10>)/√2'''
+    return 1/np.sqrt(2) * (np.kron(zero(), one()) + np.kron(one(), zero()))
+
+def psi_minus():
+    '''Returns the Bell state |Ψ-> = (|01> - |10>)/√2'''
+    return 1/np.sqrt(2) * (np.kron(zero(), one()) - np.kron(one(), zero()))
+
+
+# =============================================================================
 # BLOCH SPHERE REPRESENTATION
 # =============================================================================
 
