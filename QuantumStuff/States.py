@@ -215,18 +215,21 @@ def bloch_vector(rho: MatrixLike, batchmode: bool) -> np.ndarray:
     return bloch_vec
 
 
-def BlochSpherePlot(states: MatrixLike):
+def BlochSpherePlot(states: MatrixLike, batchmode: bool):
     """
     Plot points on a Bloch sphere using Plotly.
     
     Args:
         states (MatrixLike): A list or array of quantum states (density matrices or pure states).
+        batchmode (bool): If True, process a batch of states.
+    Returns:
+        Displays a 3D plot of the Bloch sphere with points.
     """
     if not isinstance(states, (np.ndarray, list)):
         raise TypeError("Input states must be a numpy array or a list.")
     
     # Calculate Bloch vectors for all states
-    vectors = bloch_vector(states).T
+    vectors = bloch_vector(states, batchmode).T
     
     # Create sphere mesh (low resolution for better performance)
     u = np.linspace(0, 2 * np.pi, 50)
