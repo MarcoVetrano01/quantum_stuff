@@ -230,7 +230,6 @@ def BlochSpherePlot(states: MatrixLike, batchmode: bool):
     
     # Calculate Bloch vectors for all states
     vectors = bloch_vector(states, batchmode).T
-    print(vectors.shape)
     # Create sphere mesh (low resolution for better performance)
     u = np.linspace(0, 2 * np.pi, 50)
     v = np.linspace(0, np.pi, 25)
