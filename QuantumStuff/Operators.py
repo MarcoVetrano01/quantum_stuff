@@ -164,12 +164,12 @@ def commutator(A:MatrixOrSparse, B:MatrixOrSparse) -> np.ndarray:
 # EXPECTATION VALUES AND MEASUREMENTS
 # =============================================================================
 
-def expect(state: np.ndarray, op: np.ndarray, batchmode: bool = True, tol: float = 1e-7) -> Union[float, np.ndarray]:
+def expect(state: MatrixLike, op: np.ndarray, batchmode: bool = True, tol: float = 1e-7) -> Union[float, np.ndarray]:
     """
     Calculate the expectation value ⟨ψ|O|ψ⟩ or Tr(ρO) of an operator.
     
     Args:
-        state (np.ndarray): Quantum state as ket vector or density matrix.
+        state (MatrixLike): Quantum state as ket vector or density matrix.
         op (np.ndarray): Operator to measure.
         batchmode (bool): If True, allows batch processing of multiple states.
         
@@ -180,6 +180,7 @@ def expect(state: np.ndarray, op: np.ndarray, batchmode: bool = True, tol: float
     Raises:
         ValueError: If input is not a valid quantum state.
     """
+    state = np.array(state, dtype = complex)
     state = ket_to_dm(state, batchmode, tol = tol)
     l = np.shape(state) 
 
