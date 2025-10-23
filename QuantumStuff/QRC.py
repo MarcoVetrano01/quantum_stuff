@@ -2,11 +2,12 @@ import numpy as np
 from tqdm import tqdm
 from scipy.sparse import csc_matrix, csc_array
 from .Evolution import Super_H, Super_D, Lindblad_Propagator
-from .States import zero, random_qubit
+from .States import zero, random_qubit, one
 from .Metrics import trace_distance
 from .utils import is_herm, is_state, dag
 from .Operators import measure, local_measurements, two_qubits_measurements, sigmax, sigmay, sigmaz
 import sklearn.linear_model as LM
+from scipy.stats import pearsonr
 
 sx = sigmax()
 sy = sigmay()
@@ -60,7 +61,7 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
     else:
         superd = csc_array(np.zeros((4**Nq, 4**Nq), dtype = complex))
     if state is None:
-        state = zero(dm = True, N = Nq)
+        state = one(dm = True, N = Nq)
     state_t = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
     
     for i in tqdm(range(steps), disable = disable_progress_bar):
@@ -283,3 +284,51 @@ def echo_state_property(sk: np.ndarray, H_enc: np.ndarray | csc_array | csc_matr
     drhot = CD_evolution(sk, H_enc, H0, cops, dt, wo, drho, disable_progress_bar, ignore = True)
     td = trace_distance(drhot)
     return td
+
+def CD_ShortTermMemory(max_tau: int, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, sqo: list, tqo: list, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 300):
+    '''Computes the short term memory capacity of a quantum reservoir computer using the CD evolution method.
+    The short term memory task consists in testing the capacity of the reservoir to remember inputs after a certain delay tau.
+    The function trains a ridge regression model to predict the input signal at time t - tau using the reservoir states at time t.
+    The memory capacity is evaluated as the squared correlation coefficient between the predicted and target signals.
+    Args:
+        max_tau (int): Maximum delay time to evaluate the memory capacity.
+        H_enc (np.ndarray | csc_matrix | csc_array): Encoding Hamiltonian of the quantum reservoir.
+        H0 (np.ndarray | csc_matrix | csc_array): Free Hamiltonian of the quantum reservoir.
+        c_ops (list): List of collapse operators for the quantum reservoir.
+        dt (float): Time step for the evolution.
+        sqo (list): List of single qubit operators for measurements.
+        tqo (list): List of two qubit operators for measurements.
+        operators (list | None, optional): List of custom measurement operators. If None, local
+        and two qubit measurements are used. Defaults to None.
+        meas_ind (list | None, optional): List of measurement indices for custom operators. If None,
+        all indices are used. Defaults to None. If an empty list is provided for an operator, all indices are used for that operator.
+        wo (int, optional): Washout period to discard initial transient states. Defaults to 1000.
+        train_size (int, optional): Size of the training dataset. Defaults to 1000
+        test_size (int, optional): Size of the testing dataset. Defaults to 300.
+    Returns:
+        np.ndarray: Array of memory capacities for delays from 0 to max_tau - 1.
+    '''
+    np.random.seed(seed = 42)
+    sk = np.random.random((wo + train_size + test_size,1))
+    rhot = QRC.CD_evolution(sk, H_enc, H0, c_ops, dt, wo + train_size + test_size)
+    if meas_ind is not None or operators is not None:
+        if len(meas_ind) == 0:
+            meas_ind = [[] for i in range(len(operators))]
+        x_train = measure(rhot[wo : wo + train_size + test_size], operators, meas_ind)
+    else:
+        x = np.hstack((local_measurements(rhot[wo : wo + train_size + test_size], sqo), two_qubits_measurements(rhot[wo: wo + train_size + test_size], tqo)))
+        x = np.real(x)
+    x_train = x[:train_size]
+    x_test = x[train_size: train_size + test_size]
+    ypred = np.zeros((max_tau, test_size))
+    r = np.zeros((max_tau))
+    for tau in range(max_tau):
+        y_target = sk[wo - tau : wo + train_size - tau]
+        alpha = np.logspace(-9,3,1000)
+        ridge = LM.RidgeCV(alphas = alpha.tolist())
+        ridge.fit((x_train), y_target)
+        ypred[tau] = ridge.predict(x_test).flatten()
+
+        corr, _ = pearsonr(ypred[tau], sk[wo + train_size - tau : wo + train_size + test_size - tau,0])
+        r[tau] = corr**2
+    return r
