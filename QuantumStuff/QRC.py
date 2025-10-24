@@ -310,7 +310,7 @@ def CD_ShortTermMemory(max_tau: int, H_enc: np.ndarray | csc_matrix | csc_array,
     '''
     np.random.seed(seed = 42)
     sk = np.random.random((wo + train_size + test_size,1))
-    rhot = QRC.CD_evolution(sk, H_enc, H0, c_ops, dt, wo + train_size + test_size)
+    rhot = CD_evolution(sk, H_enc, H0, c_ops, dt, wo + train_size + test_size)
     if meas_ind is not None or operators is not None:
         if len(meas_ind) == 0:
             meas_ind = [[] for i in range(len(operators))]
