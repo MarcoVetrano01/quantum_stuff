@@ -111,7 +111,35 @@ def interaction(op: MatrixLike, J: MatrixLike):
     result = np.tensordot(J, np.matmul(op[:,None], op[None,:]),axes = ([ax - 2, ax - 1], [0,1]))
     return result
 
-def Lindblad_Propagator(SH: MatrixOrSparse, SD: MatrixOrSparse | None, dt: float, rho: MatrixLike, ignore = False):
+def enforce_physical(rho, clip_neg=True):
+    """
+    Enforce the physicality of a density matrix by hermitizing, clipping negative eigenvalues, and renormalizing trace.
+    Args:
+        rho (np.ndarray): Density matrix to be enforced.
+        clip_neg (bool, optional): Whether to clip negative eigenvalues. Defaults to True.
+    returns:
+        np.ndarray: Physical density matrix.
+    """
+    # Hermitize
+    rho = 0.5 * (rho + rho.conj().T)
+
+    if clip_neg:
+        # use eigh (hermitian) for stability
+        vals, vecs = np.linalg.eigh(rho)
+        eps = 1e-7
+        if np.any(vals < -eps):
+            print(f"Warning: Negative eigenvalues found in density matrix: {vals[vals < 0]}")
+        # clip negatives below -eps
+        vals_clipped = np.where(vals < 0, np.maximum(vals, 0.0), vals)
+        # if all zero, keep original to avoid division by zero
+        rho = (vecs @ np.diag(vals_clipped) @ vecs.conj().T)
+    # renormalize trace
+    tr = np.trace(rho)
+    if np.abs(tr) > 0:
+        rho = rho / tr
+    return rho
+
+def Lindblad_Propagator(SH: np.ndarray | csc_matrix, SD: np.ndarray | csc_matrix | None, dt: float, rho: np.ndarray, ignore = False):
     """
     Lindblad propagator for Lindblad equation
     Args:
@@ -122,20 +150,32 @@ def Lindblad_Propagator(SH: MatrixOrSparse, SD: MatrixOrSparse | None, dt: float
     Returns:
         np.ndarray: Time-evolved density matrix.
     """
-    rho = np.asarray(rho, dtype = complex)
-    if not ignore:
-        # No need for explicit is_state check - ket_to_dm will validate and convert
-        rho = ket_to_dm(rho, False) if rho.ndim != 1 else operator2vector(ket_to_dm(vector2operator(rho), False))
+    
+    
+    if ignore:
+        pass
+    else:
+        check = is_state(rho, batchmode = False)
+        if np.False_ in check:
+            raise ValueError("Input must be a valid quantum state.")
     if SD == None:
         SD = csc_array(np.zeros_like(SH.toarray()))
     L = SH + SD
-    is_sparse = isinstance(L, (csc_matrix, csc_array))
+    is_sparse = type(L) == csc_matrix or csc_array
     if rho.ndim != 1:
         rho = operator2vector(rho)
     if is_sparse:
-        return vector2operator(expm_multiply(L, rho, start = 0 , stop = dt, num = 2)[-1])
+        rho = vector2operator(expm_multiply(L, rho, start = 0 , stop = dt, num = 2)[-1])
+        if ignore:
+            return rho
+        else:
+            return enforce_physical(rho)
     else:
-        return expm(L * dt) @ rho
+        rho = vector2operator(expm(L * dt) @ rho)
+        if ignore:
+            return rho
+        else:
+            return enforce_physical(rho)
 
 def Liouvillian(t: float, state: MatrixLike, H: MatrixLike, c_ops: list):
     """
