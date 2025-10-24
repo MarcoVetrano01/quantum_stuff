@@ -239,10 +239,10 @@ def CD_consistency_test(sk: MatrixLike, H1: MatrixOrSparse, H0: MatrixOrSparse, 
     
     sk = np.array(sk)
     rhot = CD_evolution(sk, H1, H0, cops, dt, wo + train_size + 100)
-    x1 = np.hstack(local_measurements(rhot[wo + train_size : wo + train_size + 100], sqo), two_qubits_measurements(rhot[wo + train_size : wo + train_size + 100], tqo))
+    x1 = np.hstack((local_measurements(rhot[wo + train_size : wo + train_size + 100], sqo), two_qubits_measurements(rhot[wo + train_size : wo + train_size + 100], tqo)))
     rho = CD_cooldown(rhot[-1], H0, cops, cool)
     rhot = CD_evolution(sk, H1, H0, cops, dt, wo + train_size + 100, rho)
-    x2 = np.hstack(local_measurements(rhot[wo + train_size : wo + train_size + 100], sqo), two_qubits_measurements(rhot[wo + train_size : wo + train_size + 100], tqo))
+    x2 = np.hstack((local_measurements(rhot[wo + train_size : wo + train_size + 100], sqo), two_qubits_measurements(rhot[wo + train_size : wo + train_size + 100], tqo)))
     consistency = pearsonr(x1, x2)**2
     return consistency
 
