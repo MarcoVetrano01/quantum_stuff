@@ -243,7 +243,7 @@ def CD_consistency_test(sk: MatrixLike, H1: MatrixOrSparse, H0: MatrixOrSparse, 
     rho = CD_cooldown(rhot[-1], H0, cops, cool, dt)
     rhot = CD_evolution(sk, H1, H0, cops, dt, wo + train_size + 100, rho)
     x2 = np.hstack((local_measurements(rhot[wo + train_size : wo + train_size + 100], sqo), two_qubits_measurements(rhot[wo + train_size : wo + train_size + 100], tqo)))
-    consistency = pearsonr(np.real(x1), np.real(x2))**2
+    consistency = pearsonr(np.real(x1), np.real(x2))[0]**2
     return consistency
 
 def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, sqo: list, tqo: list, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 300):
