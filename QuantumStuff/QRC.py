@@ -8,10 +8,15 @@ from .utils import is_herm, is_state, dag
 from .Operators import measure, local_measurements, two_qubits_measurements, sigmax, sigmay, sigmaz
 import sklearn.linear_model as LM
 from scipy.stats import pearsonr
+from typing import Union
+
+MatrixOrSparse = Union[np.ndarray, csc_matrix, csc_array]
+MatrixLike = Union[np.ndarray, list]
 
 sx = sigmax()
 sy = sigmay()
 sz = sigmaz()
+sqo = [sx, sy, sz]
 tqo = [np.kron(sx, sx), np.kron(sy, sy), np.kron(sz, sz)]
 
 def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float,  steps: int, state = None, disable_progress_bar = False, ignore = False):
@@ -134,7 +139,7 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
 
     return ridge, x_train, [rhot[wo + train_size -1 + int(j*test_size)] for j in range(windows)]
 
-def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, sqo: list = [sx, sy, sz], tqo: list = tqo, operators: list | None = None, meas_ind: list| None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10):
+def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, sqo: list = [sx, sy, sz], tqo: list = tqo, operators: list | None = None, meas_ind: list| None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10):
     """
     Tests a trained QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291.
     After the evolution of the system a set of measurements is performed and the results are used to predict the next value of the input signal. The test is performed on multiple windows
@@ -199,7 +204,98 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
                     y_pred[j][i+1][k] = np.max(sk[:,k])
     return y_pred
 
-def Continuous_Dissipation_RC(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False):
+def CD_cooldown(rho: np.ndarray, H0: MatrixOrSparse, c_ops: list, cool: int, δt: float):
+    '''Cools down the reservoir state by letting it evolve under free evolution for a certain number of steps.
+     Args:
+         rho (np.ndarray): Initial density matrix.
+         H0 (np.ndarray | csc_matrix): Free Hamiltonian of the quantum reservoir.
+         c_ops (list): List of collapse operators for the quantum reservoir.
+         cool (int): Number of cooling steps.
+         δt (float): Time step for the evolution.
+     Returns:
+         np.ndarray: Cooled density matrix.
+     '''
+    Nq = int(np.log2(H0.shape[0]))
+    superd = csc_matrix(Super_D(c_ops), dtype = complex)
+    superh = csc_matrix(Super_H(H0), dtype = complex)
+    for _ in range(cool):
+        rho = Lindblad_Propagator(superh, superd, δt, rho)
+    return rho
+
+def CD_consistency_test(sk: MatrixLike, H1: MatrixOrSparse, H0: MatrixOrSparse, cops: list, dt: float, wo: int, train_size: int, cool: int):
+    """Tests the consistency of the quantum reservoir computer by comparing the measurements before and after cooling.
+    Consistency is defined as the pearson correlation coefficient squared between the measurements before and after cooling. After cooling the reservoir is
+    re-evolved for the same time period with the same input sequence.
+    Args:
+        sk (np.ndarray): Input signal sequence.
+        H1 (np.ndarray | csc_matrix | csc_array): Encoding Hamiltonian of the quantum reservoir.
+        H0 (np.ndarray | csc_matrix | csc_array): Free Hamiltonian of the quantum reservoir.
+        cops (list): List of collapse operators for the quantum reservoir.
+        dt (float): Time step for the evolution.
+        wo (int): Washout period to discard initial transient states.
+        train_size (int): Size of the training dataset.
+        cool (int): Number of cooling steps to apply.
+    """
+    
+    sk = np.array(sk)
+    rhot = CD_evolution(sk, H1, H0, cops, dt, wo + train_size + 100)
+    x1 = np.hstack(local_measurements(rhot[wo + train_size : wo + train_size + 100], sqo), two_qubits_measurements(rhot[wo + train_size : wo + train_size + 100], tqo))
+    rho = CD_cooldown(rhot[-1], H0, cops, cool)
+    rhot = CD_evolution(sk, H1, H0, cops, dt, wo + train_size + 100, rho)
+    x2 = np.hstack(local_measurements(rhot[wo + train_size : wo + train_size + 100], sqo), two_qubits_measurements(rhot[wo + train_size : wo + train_size + 100], tqo))
+    consistency = pearsonr(x1, x2)**2
+    return consistency
+
+def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, sqo: list, tqo: list, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 300):
+    '''Computes the short term memory capacity of a quantum reservoir computer using the CD evolution method.
+    The short term memory task consists in testing the capacity of the reservoir to remember inputs after a certain delay tau.
+    The function trains a ridge regression model to predict the input signal at time t - tau using the reservoir states at time t.
+    The memory capacity is evaluated as the squared correlation coefficient between the predicted and target signals.
+    Args:
+        max_tau (int): Maximum delay time to evaluate the memory capacity.
+        H_enc (np.ndarray | csc_matrix | csc_array): Encoding Hamiltonian of the quantum reservoir.
+        H0 (np.ndarray | csc_matrix | csc_array): Free Hamiltonian of the quantum reservoir.
+        c_ops (list): List of collapse operators for the quantum reservoir.
+        dt (float): Time step for the evolution.
+        sqo (list): List of single qubit operators for measurements.
+        tqo (list): List of two qubit operators for measurements.
+        operators (list | None, optional): List of custom measurement operators. If None, local
+        and two qubit measurements are used. Defaults to None.
+        meas_ind (list | None, optional): List of measurement indices for custom operators. If None,
+        all indices are used. Defaults to None. If an empty list is provided for an operator, all indices are used for that operator.
+        wo (int, optional): Washout period to discard initial transient states. Defaults to 1000.
+        train_size (int, optional): Size of the training dataset. Defaults to 1000
+        test_size (int, optional): Size of the testing dataset. Defaults to 300.
+    Returns:
+        np.ndarray: Array of memory capacities for delays from 0 to max_tau - 1.
+    '''
+    np.random.seed(seed = 42)
+    sk = np.random.random((wo + train_size + test_size,1))
+    rhot = CD_evolution(sk, H_enc, H0, c_ops, dt, wo + train_size + test_size)
+    if meas_ind is not None or operators is not None:
+        if len(meas_ind) == 0:
+            meas_ind = [[] for i in range(len(operators))]
+        x_train = measure(rhot[wo : wo + train_size + test_size], operators, meas_ind)
+    else:
+        x = np.hstack((local_measurements(rhot[wo : wo + train_size + test_size], sqo), two_qubits_measurements(rhot[wo: wo + train_size + test_size], tqo)))
+        x = np.real(x)
+    x_train = x[:train_size]
+    x_test = x[train_size: train_size + test_size]
+    ypred = np.zeros((max_tau, test_size))
+    r = np.zeros((max_tau))
+    for tau in range(max_tau):
+        y_target = sk[wo - tau : wo + train_size - tau]
+        alpha = np.logspace(-9,3,1000)
+        ridge = LM.RidgeCV(alphas = alpha.tolist())
+        ridge.fit((x_train), y_target)
+        ypred[tau] = ridge.predict(x_test).flatten()
+
+        corr, _ = pearsonr(ypred[tau], sk[wo + train_size - tau : wo + train_size + test_size - tau,0])
+        r[tau] = corr**2
+    return r
+
+
+def Continuous_Dissipation_RC(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False):
     """
     Trains and tests a QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by 
     Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291 . After the evolution of the system
@@ -253,7 +349,7 @@ def Continuous_Dissipation_RC(sk: np.ndarray | list, y_target: np.ndarray | list
 
     return ridge, xtrain, rhot, ypred
 
-def echo_state_property(sk: np.ndarray, H_enc: np.ndarray | csc_array | csc_matrix, H0: np.ndarray | csc_array | csc_matrix, cops: list, dt: int, wo: int, disable_progress_bar = False):
+def echo_state_property(sk: np.ndarray, H_enc: MatrixOrSparse, H0: MatrixOrSparse, cops: list, dt: int, wo: int, disable_progress_bar = False):
     """
     Verifies the washout time of the reservoir in the Continous Dissipation model.
 
@@ -281,54 +377,7 @@ def echo_state_property(sk: np.ndarray, H_enc: np.ndarray | csc_array | csc_matr
     rho1 = random_qubit(Nq, pure = True, dm = True)
     rho2 = random_qubit(Nq, pure = True, dm = True)
     drho = rho1 - rho2
-    drhot = CD_evolution(sk, H_enc, H0, cops, dt, wo, drho, disable_progress_bar, ignore = True)
-    td = trace_distance(drhot)
+    drhot = CD_evolution(sk, H_enc, H0, cops, dt, wo + 100, drho, disable_progress_bar, ignore = True)
+    td = trace_distance(drhot[:100])
     return td
 
-def CD_ShortTermMemory(max_tau: int, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, sqo: list, tqo: list, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 300):
-    '''Computes the short term memory capacity of a quantum reservoir computer using the CD evolution method.
-    The short term memory task consists in testing the capacity of the reservoir to remember inputs after a certain delay tau.
-    The function trains a ridge regression model to predict the input signal at time t - tau using the reservoir states at time t.
-    The memory capacity is evaluated as the squared correlation coefficient between the predicted and target signals.
-    Args:
-        max_tau (int): Maximum delay time to evaluate the memory capacity.
-        H_enc (np.ndarray | csc_matrix | csc_array): Encoding Hamiltonian of the quantum reservoir.
-        H0 (np.ndarray | csc_matrix | csc_array): Free Hamiltonian of the quantum reservoir.
-        c_ops (list): List of collapse operators for the quantum reservoir.
-        dt (float): Time step for the evolution.
-        sqo (list): List of single qubit operators for measurements.
-        tqo (list): List of two qubit operators for measurements.
-        operators (list | None, optional): List of custom measurement operators. If None, local
-        and two qubit measurements are used. Defaults to None.
-        meas_ind (list | None, optional): List of measurement indices for custom operators. If None,
-        all indices are used. Defaults to None. If an empty list is provided for an operator, all indices are used for that operator.
-        wo (int, optional): Washout period to discard initial transient states. Defaults to 1000.
-        train_size (int, optional): Size of the training dataset. Defaults to 1000
-        test_size (int, optional): Size of the testing dataset. Defaults to 300.
-    Returns:
-        np.ndarray: Array of memory capacities for delays from 0 to max_tau - 1.
-    '''
-    np.random.seed(seed = 42)
-    sk = np.random.random((wo + train_size + test_size,1))
-    rhot = CD_evolution(sk, H_enc, H0, c_ops, dt, wo + train_size + test_size)
-    if meas_ind is not None or operators is not None:
-        if len(meas_ind) == 0:
-            meas_ind = [[] for i in range(len(operators))]
-        x_train = measure(rhot[wo : wo + train_size + test_size], operators, meas_ind)
-    else:
-        x = np.hstack((local_measurements(rhot[wo : wo + train_size + test_size], sqo), two_qubits_measurements(rhot[wo: wo + train_size + test_size], tqo)))
-        x = np.real(x)
-    x_train = x[:train_size]
-    x_test = x[train_size: train_size + test_size]
-    ypred = np.zeros((max_tau, test_size))
-    r = np.zeros((max_tau))
-    for tau in range(max_tau):
-        y_target = sk[wo - tau : wo + train_size - tau]
-        alpha = np.logspace(-9,3,1000)
-        ridge = LM.RidgeCV(alphas = alpha.tolist())
-        ridge.fit((x_train), y_target)
-        ypred[tau] = ridge.predict(x_test).flatten()
-
-        corr, _ = pearsonr(ypred[tau], sk[wo + train_size - tau : wo + train_size + test_size - tau,0])
-        r[tau] = corr**2
-    return r
