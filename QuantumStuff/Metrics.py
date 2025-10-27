@@ -1,6 +1,7 @@
 import numpy as np
 from .utils import nqubit, dag, is_state, is_herm, is_norm, tensor_product, ket_to_dm, ptrace, MatrixLike
 import warnings
+from scipy.linalg import sqrtm
 
 warnings.filterwarnings(
     action='ignore',
@@ -142,7 +143,7 @@ def trace_distance(state1: MatrixLike, state2: MatrixLike | None = None):
     else:
         state1 = np.asarray(state1, dtype = complex)
         dist = state1
-    return np.real(0.5*(np.linalg.trace(np.sqrt(dist@dag(dist)))))
+    return np.real(0.5*(np.linalg.trace(sqrtm(dist@dag(dist)))))
 
 def von_neumann_entropy(state: MatrixLike):
     """

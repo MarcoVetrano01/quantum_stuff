@@ -77,9 +77,7 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         H = csc_array(H, dtype = complex)
         superh = csc_array(Super_H(H), dtype = complex)
         state = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
-        if not ignore:
-            state = 0.5*(state + dag(state))
-            state /= np.trace(state)
+
         state_t[i] = state
 
     return state_t
