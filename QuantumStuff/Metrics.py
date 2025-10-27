@@ -143,7 +143,11 @@ def trace_distance(state1: MatrixLike, state2: MatrixLike | None = None):
     else:
         state1 = np.asarray(state1, dtype = complex)
         dist = state1
-    return np.real(0.5*(np.linalg.trace(sqrtm(dist@dag(dist)))))
+        if len(np.shape(dist)) == 2:
+            return 0.5 * np.trace(sqrtm(dist @ dag(dist))).real
+        else:
+            dists = np.array([sqrtm(dist[i] @ dag(dist[i])) for i in range(len(dist))])
+            return np.real(0.5*(np.linalg.trace(dists)).real)
 
 def von_neumann_entropy(state: MatrixLike):
     """
