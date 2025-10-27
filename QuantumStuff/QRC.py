@@ -376,6 +376,6 @@ def echo_state_property(sk: np.ndarray, H_enc: MatrixOrSparse, H0: MatrixOrSpars
     rho2 = random_qubit(Nq, pure = True, dm = True)
     drho = rho1 - rho2
     drhot = CD_evolution(sk, H_enc, H0, cops, dt, wo + 100, drho, disable_progress_bar, ignore = True)
-    td = trace_distance(drhot[:-100])
+    td = trace_distance(drhot[-100:])
     return td
 
