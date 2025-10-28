@@ -15,18 +15,18 @@ from typing import Union
 # PAULI OPERATORS
 # =============================================================================
 
-def sigmap() -> np.ndarray:
+def sigmam() -> np.ndarray:
     """
-    Create the Pauli raising operator σ₊ = (σₓ + iσᵧ)/2.
+    Create the Pauli raising operator σ₋ = (σₓ + iσᵧ)/2.
     
     Returns:
         np.ndarray: 2×2 raising operator matrix |0⟩⟨1|.
     """
     return np.array([[0, 1], [0, 0]], dtype=complex)
 
-def sigmam() -> np.ndarray:
+def sigmap() -> np.ndarray:
     """
-    Create the Pauli lowering operator σ₋ = (σₓ - iσᵧ)/2.
+    Create the Pauli lowering operator σ₊ = (σₓ - iσᵧ)/2.
     
     Returns:
         np.ndarray: 2×2 lowering operator matrix |1⟩⟨0|.

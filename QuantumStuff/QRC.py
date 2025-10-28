@@ -66,7 +66,7 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
     else:
         superd = csc_array(np.zeros((4**Nq, 4**Nq), dtype = complex))
     if state is None:
-        state = one(dm = True, N = Nq)
+        state = zero(dm = True, N = Nq)
     state_t = np.zeros((steps, 2**Nq, 2**Nq), dtype = complex)
     
     for i in tqdm(range(steps), disable = disable_progress_bar):
