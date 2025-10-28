@@ -137,7 +137,7 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
 
     return ridge, x_train, [rhot[wo + train_size -1 + int(j*test_size)] for j in range(windows)]
 
-def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, sqo: list = [sx, sy, sz], tqo: list = tqo, operators: list | None = None, meas_ind: list| None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10):
+def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, sqo: list = [sx, sy, sz], tqo: list = tqo, operators: list | None = None, meas_ind: list| None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, delay = 1):
     """
     Tests a trained QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291.
     After the evolution of the system a set of measurements is performed and the results are used to predict the next value of the input signal. The test is performed on multiple windows
@@ -171,8 +171,10 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
         H_enc = [H_enc]
     for j in range(windows):
         rho = rhof[j]
-        y_pred[j][0] = sk[wo + train_size + int(j*test_size)]
-        for i in tqdm(range(test_size-1)):
+        for t in range(delay):
+            y_pred[j][t] = sk[wo + train_size + j * test_size + t]
+        
+        for i in tqdm(range(test_size-delay)):
             H = H0.copy()
             for k in range(len(H_enc)):
                 H += ((1+y_pred[j][i][k])*H_enc[k])
@@ -180,8 +182,6 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
             superh = Super_H(H)
             superh = csc_array(superh, dtype = complex)
             rho = Lindblad_Propagator(superh, superd, dt, rho)
-            rho = 0.5*(rho + dag(rho))
-            rho /= np.trace(rho)
             
             #Measurements
             if operators is not None and meas_ind is not None:
@@ -194,12 +194,12 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
             else:
                 x_test = np.hstack((local_measurements(rho, operators = sqo,batchmode = False), two_qubits_measurements(rho, tqo)))
             x_test = np.real(x_test)
-            y_pred[j][i+1] = ridge.predict(x_test[0].reshape(1, -1))
+            y_pred[j][i+delay] = ridge.predict(x_test[0].reshape(1, -1))
             for k in range(y_pred.shape[2]):
-                if y_pred[j][i+1][k] < np.min(sk[:,k]):
-                    y_pred[j][i+1][k] = np.min(sk[:,k])
-                if y_pred[j][i+1][k] > np.max(sk[:,k]):
-                    y_pred[j][i+1][k] = np.max(sk[:,k])
+                if y_pred[j][i+delay][k] < np.min(sk[:,k]):
+                    y_pred[j][i+delay][k] = np.min(sk[:,k])
+                if y_pred[j][i+delay][k] > np.max(sk[:,k]):
+                    y_pred[j][i+delay][k] = np.max(sk[:,k])
     return y_pred
 
 def CD_cooldown(rho: np.ndarray, H0: MatrixOrSparse, c_ops: list, cool: int, δt: float):
