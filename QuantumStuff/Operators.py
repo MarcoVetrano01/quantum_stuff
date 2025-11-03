@@ -11,6 +11,8 @@ from itertools import combinations
 from scipy.special import comb
 from scipy.sparse import csc_array, kron, csc_matrix, dia_matrix
 from typing import Union
+import itertools
+
 # =============================================================================
 # PAULI OPERATORS
 # =============================================================================
@@ -59,6 +61,44 @@ def sigmaz() -> np.ndarray:
         np.ndarray: 2×2 Pauli Z matrix [[1,0],[0,-1]].
     """
     return np.array([[1, 0], [0, -1]], dtype=complex)
+
+def pauli_basis(N, normalized=True):
+    """
+    Build the full N-qubit Pauli basis.
+
+    Args:
+        N (int): Number of qubits
+        normalized (bool): If True, returns orthonormal basis w.r.t. Hilbert–Schmidt inner product
+
+    Returns:
+        basis (list of np.ndarray): List of 2^N x 2^N matrices forming the basis
+        labels (list of str): Corresponding Pauli string labels
+    """
+    # Single-qubit Paulis
+    I = np.eye(2, dtype=complex)
+    X = sigmax()
+    Y = sigmay()
+    Z = sigmaz()
+
+    paulis = [I, X, Y, Z]
+    labels_single = ["I", "X", "Y", "Z"]
+
+    basis = []
+    labels = []
+
+    # Cartesian product of N choices from {I,X,Y,Z}
+    for prod in itertools.product(range(4), repeat=N):
+        mat = paulis[prod[0]]
+        label = labels_single[prod[0]]
+        for idx in prod[1:]:
+            mat = np.kron(mat, paulis[idx])
+            label += labels_single[idx]
+        if normalized:
+            mat = mat / np.sqrt(2**N)  # ensure orthonormality
+        basis.append(mat)
+        labels.append(label)
+
+    return basis, labels
 
 def hadamard() -> np.ndarray:
     """

@@ -7,11 +7,9 @@ Functions are organized by functionality for better code navigation.
 
 import numpy as np
 from functools import reduce
-from itertools import combinations
 import string
 import random
 from scipy.sparse import csc_array, csc_matrix, kron
-import itertools
 from scipy.sparse.linalg import norm
 from typing import Union
 
@@ -300,45 +298,6 @@ def nqubit(op: MatrixLike) -> int:
     if len(op.shape) == 1:
         op = ket_to_dm(op, batchmode = False)
     return int(np.log2(op.shape[1])) if isinstance(op, (np.ndarray, (list, np.array))) else 0
-
-def pauli_basis(N, normalized=True):
-    """
-    Build the full N-qubit Pauli basis.
-
-    Args:
-        N (int): Number of qubits
-        normalized (bool): If True, returns orthonormal basis w.r.t. Hilbert–Schmidt inner product
-
-    Returns:
-        basis (list of np.ndarray): List of 2^N x 2^N matrices forming the basis
-        labels (list of str): Corresponding Pauli string labels
-    """
-    # Single-qubit Paulis
-    I = np.array([[1, 0], [0, 1]], dtype=complex)
-    X = np.array([[0, 1], [1, 0]], dtype=complex)
-    Y = np.array([[0, -1j], [1j, 0]], dtype=complex)
-    Z = np.array([[1, 0], [0, -1]], dtype=complex)
-
-    paulis = [I, X, Y, Z]
-    labels_single = ["I", "X", "Y", "Z"]
-
-    basis = []
-    labels = []
-
-    # Cartesian product of N choices from {I,X,Y,Z}
-    for prod in itertools.product(range(4), repeat=N):
-        mat = paulis[prod[0]]
-        label = labels_single[prod[0]]
-        for idx in prod[1:]:
-            mat = np.kron(mat, paulis[idx])
-            label += labels_single[idx]
-        if normalized:
-            mat = mat / np.sqrt(2**N)  # ensure orthonormality
-        basis.append(mat)
-        labels.append(label)
-
-    return basis, labels
-
 
 def tensor_product(operators: list):
     """
