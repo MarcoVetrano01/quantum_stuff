@@ -8,7 +8,7 @@ from .utils import is_herm, is_state, dag
 from .Operators import measure, local_measurements, two_qubits_measurements, sigmax, sigmay, sigmaz
 import sklearn.linear_model as LM
 from scipy.stats import pearsonr
-from typing import Union
+from typing import Union, Dict, Any
 
 MatrixOrSparse = Union[np.ndarray, csc_matrix, csc_array]
 MatrixLike = Union[np.ndarray, list]
@@ -18,6 +18,21 @@ sy = sigmay()
 sz = sigmaz()
 sqo = [sx, sy, sz]
 tqo = [np.kron(sx, sx), np.kron(sy, sy), np.kron(sz, sz)]
+operators = []
+meas_ind = None
+
+DEFAULTS: Dict[str, Dict[str, Any]] = {
+    "local & correlations": {"sqo": sqo, "tqo": tqo},
+    "probabilities": {"shots": 0},
+    "other": {"operators": operators, "meas_ind": meas_ind}
+}
+
+# =============================================================================
+# CONTINOUS DISSIPATION QRC FUNCTIONS
+#           FORECASTING TASK
+# =============================================================================
+
+
 
 def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float,  steps: int, state = None, disable_progress_bar = False, ignore = False):
     """
@@ -56,8 +71,7 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         raise ValueError("Steps must be a positive integer, whose length is less than or equal to the length of sk")
     if not all(isinstance(c, (np.ndarray, csc_matrix, csc_array)) for c in c_ops):
         raise TypeError("All collapse operators in c_ops must be numpy arrays, csc_matrix, or csc_array")
-    # if len(np.shape(sk)) == 1:
-    #     sk = sk.reshape(len(sk),1)
+
     if not isinstance(H_enc, list):
         H_enc = [H_enc]
     Nq = int(np.log2(H0.shape[0]))
@@ -73,7 +87,6 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
         H = H0
         for k in range(len(H_enc)):
             H += (1+sk[i][k])*H_enc[k]
-        # H += (1+sk[i])*H_enc
         H = csc_array(H, dtype = complex)
         superh = csc_array(Super_H(H), dtype = complex)
         state = Lindblad_Propagator(superh, superd, δt, state, ignore = ignore)
@@ -82,18 +95,14 @@ def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_arr
 
     return state_t
 
-def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, dt: float, sqo: list, tqo: list, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False):
+def CD_reservoir(sk: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False, **kwargs):
     """ 
-    Trains a QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by 
+    Returns the outcomes of a reservori using the Continous Dissipation approach (CD) used by 
     Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291 . After the evolution of the system
-    a set of measurements is performed and the results are used to train a Ridge regression model.
+    a set of measurements is performed which depends on the selected mode.
     Thus:
     X_i = Tr{rho(t)O_i}
-    and we train a linear model such that:
-    y_target_j = ∑_iW^{i,j}X_i + b_j
-    where y_target_j is j-th feature of the target output, W^{i,j} is the weight for the i-th measurement 
-    operator and j-th target feature, and b_j is the bias for the j-th target feature.
-
+    
     Args:
         sk (np.ndarray | list): The input signal to be encoded in the Hamiltonian.
         y_target (np.ndarray | list): The target output for training.
@@ -101,43 +110,74 @@ def CD_training(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: np.nd
         H0 (np.ndarray | sp.csc_matrix | sp.csc_array): The initial Hamiltonian.
         c_ops (list): List of collapse operators for the system.
         dt (float): Time step for the evolution.
-        sqo (list): List of single qubit operators for optimized local measurements. Delfault to [σx, σy, σz].
-        tqo (list): List of two qubit operators for optimized two qubit measurements. Default to [σx⊗σx, σy⊗σy, σz⊗σz].
-        operators (list): List of measurement operators.
-        meas_ind (list): Where the operators must be measured.
+        mode (str): Measurement mode. Can be 'local & correlations', 'probabilities', or 'other'. Default is 'local & correlations'. 
+                    If 'local & correlations' is used the function measures as default the local operators [σx, σy, σz] and the two qubit correlations [σx⊗σx, σy⊗σy, σz⊗σz]. 
+                    To change it local measurements and two qubit correlations operators use the keyword arguments 'sqo' and 'tqo' respectively.
+                    If 'probabilities' is used the function measures the state probabilities in the computational basis at infinite statistics. 
+                    'shots' parameter changes the statistics. Default is 0 (infinite statistics).
+                    If 'other' is used the function measures custom operators provided in the keyword arguments 'operators' and 'meas_ind'. Default is empty list of operators and None for meas_ind 
+                    (in this case whatever operator list the user inserts, the function measures all the possible qubits and combination of qubits for those operator).
+                    meas_ind parameter should be a list of lists, where each inner list contains the indices of qubits where the corresponding operator should be measured.
         wo (int, optional): Wash out time for the reservoir. Defaults to 1000.
         train_size (int, optional): Size of the training set. Defaults to 1000.
         test_size (int, optional): Size of the test. Needed to test later on more testing windows
         windows (int, optional): Number of testing windows. Default to 10. Needed at least 1.
         rho (np.ndarray, optional): Initial state of the system. If Default the system is initialized to the Zero state.
-
+        disable_progress_bar (bool, optional): If True, disables the progress bar. Defaults to False.
+        kwargs: Additional keyword arguments for measurement modes.
     
     Returns:
-        ridge (LM.RidgeCV): The trained Ridge regression model.
         x_train (np.ndarray): The training data after measurement.
         rhot (list): The final state of the system after evolution.
     """
+    if mode not in DEFAULTS:
+        raise ValueError("invalid mode")
+    params = {**DEFAULTS[mode], **kwargs}  # user kwargs override defaults
 
     Nq = int(np.log2(H0.shape[0]))
     rhot = CD_evolution(sk, H_enc, H0, c_ops, dt, wo + train_size + int(windows * test_size), rho, disable_progress_bar)
     
-    if meas_ind is not None or operators is not None:
+    if mode == "local & correlations":
+        sqo = params.get("sqo")
+        tqo = params.get("tqo")
+        x_train = np.real(np.hstack((local_measurements(rhot[wo: wo + train_size], sqo), two_qubits_measurements(rhot[wo: wo + train_size], tqo))))
+    
+    elif mode == "probabilities":
+        shots = params.get("shots")
+        x_train = np.real(np.linalg.diagonal(rhot[wo : wo + train_size + test_size]))
+        if shots != 0:
+            x_train = np.array([np.random.multinomial(shots, x_train[i]) for i in range(len(x_train))]) / shots
+    
+    elif mode == "other":
+        operators = params.get("operators")
+        meas_ind = params.get("meas_ind")
         if len(meas_ind) == 0:
             meas_ind = [[] for i in range(len(operators))]
-        x_train = measure(rhot[wo:wo +train_size], operators, meas_ind)
-    else:
-        x_train = np.hstack((local_measurements(rhot[wo: wo + train_size], sqo), two_qubits_measurements(rhot[wo: wo + train_size], tqo)))
-    
-    x_train = np.real(x_train)
+        x_train = np.real(measure(rhot[wo:wo +train_size], operators, meas_ind))
+
+    return x_train, [rhot[wo + train_size -1 + int(j*test_size)] for j in range(windows)]
+
+def CD_training(x_train, y_target: np.ndarray | list):
+    """
+    Train a Ridge regression model using the provided training data and target output.
+    y_target_j = ∑_iW^{i,j}X_i + b_j
+    where y_target_j is j-th feature of the target output, W^{i,j} is the weight for the i-th measurement 
+    operator and j-th target feature, and b_j is the bias for the j-th target feature.
+    Args:
+        x_train (np.ndarray): The training data.
+        y_target (np.ndarray | list): The target output.
+
+    Returns:
+        ridge (LM.RidgeCV): The trained Ridge regression model.
+    """
 
     alpha = np.logspace(-9,3,1000)
     ridge = LM.RidgeCV(alphas = alpha.tolist())
     #For forecasting problems y_target = sk[wo+1:wo+train_size+1]
     ridge.fit((x_train), y_target)
+    return ridge
 
-    return ridge, x_train, [rhot[wo + train_size -1 + int(j*test_size)] for j in range(windows)]
-
-def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, sqo: list = [sx, sy, sz], tqo: list = tqo, operators: list | None = None, meas_ind: list| None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, delay = 1):
+def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, delay = 1, **kwargs):
     """
     Tests a trained QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291.
     After the evolution of the system a set of measurements is performed and the results are used to predict the next value of the input signal. The test is performed on multiple windows
@@ -150,10 +190,14 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
         H0 (np.ndarray | sp.csc_matrix | sp.csc_array): The initial Hamiltonian.
         c_ops (list): List of collapse operators for the system.
         dt (float): Time step for the evolution.
-        sqo (list): List of single qubit operators for optimized local measurements. Default to [σx, σy, σz].
-        tqo (list): List of two qubit operators for optimized two qubit measurements. Default to [σx⊗σx, σy⊗σy, σz⊗σz].
-        operators (list): List of measurement operators.
-        meas_ind (list): Where the operators must be measured.
+        mode (str): Measurement mode. Can be 'local & correlations', 'probabilities', or 'other'. Default is 'local & correlations'. 
+                    If 'local & correlations' is used the function measures as default the local operators [σx, σy, σz] and the two qubit correlations [σx⊗σx, σy⊗σy, σz⊗σz]. 
+                    To change it local measurements and two qubit correlations operators use the keyword arguments 'sqo' and 'tqo' respectively.
+                    If 'probabilities' is used the function measures the state probabilities in the computational basis at infinite statistics. 
+                    'shots' parameter changes the statistics. Default is 0 (infinite statistics).
+                    If 'other' is used the function measures custom operators provided in the keyword arguments 'operators' and 'meas_ind'. Default is empty list of operators and None for meas_ind 
+                    (in this case whatever operator list the user inserts, the function measures all the possible qubits and combination of qubits for those operator).
+                    meas_ind parameter should be a list of lists, where each inner list contains the indices of qubits where the corresponding operator should be measured.
         wo (int, optional): Wash out time for the reservoir. Defaults to 1000.
         train_size (int, optional): Size of the training set. Defaults to 1000.
         test_size (int, optional): Size of the test. Needed to test later on more testing windows. Defaults to 100.
@@ -161,6 +205,10 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
     Returns:
         y_pred (np.ndarray): The predicted output for the test set.
     """
+
+    if mode not in DEFAULTS:
+        raise ValueError("invalid mode")
+    params = {**DEFAULTS[mode], **kwargs}  # user kwargs override defaults
 
     Nq = int(np.log2(H0.shape[0]))
     superd = (Super_D(c_ops))
@@ -184,16 +232,24 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
             rho = Lindblad_Propagator(superh, superd, dt, rho)
             
             #Measurements
-            if operators is not None and meas_ind is not None:
+            if mode == "local & correlations":
+                sqo = params.get("sqo")
+                tqo = params.get("tqo")
+                x_test = np.real(np.hstack((local_measurements(rho, sqo, batchmode = False), two_qubits_measurements(rho, tqo))))
+            
+            elif mode == "probabilities":
+                shots = params.get("shots")
+                x_test = np.real(np.linalg.diagonal(rho))
+                if shots != 0:
+                    x_test = np.random.multinomial(shots, x_test) / shots
+            
+            elif mode == "other":
+                operators = params.get("operators")
+                meas_ind = params.get("meas_ind")
                 if len(meas_ind) == 0:
                     meas_ind = [[] for i in range(len(operators))]
-                ind = meas_ind.copy()
-                x_test = measure(rho, operators, ind)
-                if Nq == 1:
-                    x_test.reshape(1, -1)
-            else:
-                x_test = np.hstack((local_measurements(rho, operators = sqo,batchmode = False), two_qubits_measurements(rho, tqo)))
-            x_test = np.real(x_test)
+                x_test = np.real(measure(rho, operators, meas_ind))
+            
             y_pred[j][i+delay] = ridge.predict(x_test[0].reshape(1, -1))
             for k in range(y_pred.shape[2]):
                 if y_pred[j][i+delay][k] < np.min(sk[:,k]):
@@ -202,7 +258,60 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
                     y_pred[j][i+delay][k] = np.max(sk[:,k])
     return y_pred
 
-def CD_cooldown(rho: np.ndarray, H0: MatrixOrSparse, c_ops: list, cool: int, δt: float):
+def CD_Forecasting_RC(sk: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False, delay: int = 1, **kwargs):
+    """
+    Wrapper function that trains and tests a Quantum Reservoir Computer (QRC) using the Continous Dissipation approach (CD) as implemented in 
+    https://doi.org/10.22331/q-2024-03-20-1291 for forecasting tasks.
+    The function first trains the QRC using the provided training data and target output, and then tests the trained model on the test data.
+    
+    Args:
+        sk (np.ndarray | list): The input signal to be encoded in the Hamiltonian.
+        y_target (np.ndarray | list): The target output for training.
+        H_enc (np.ndarray | sp.csc_matrix | sp.csc_array): The encoding Hamiltonian.
+        H0 (np.ndarray | sp.csc_matrix | sp.csc_array): The initial Hamiltonian.
+        c_ops (list): List of collapse operators for the system.
+        dt (float): Time step for the evolution.
+        mode (str): Measurement mode. Can be 'local & correlations', 'probabilities', or 'other'. Default is 'local & correlations'. 
+                    If 'local & correlations' is used the function measures as default the local operators [σx, σy, σz] and the two qubit correlations [σx⊗σx, σy⊗σy, σz⊗σz]. 
+                    To change it local measurements and two qubit correlations operators use the keyword arguments 'sqo' and 'tqo' respectively.
+                    If 'probabilities' is used the function measures the state probabilities in the computational basis at infinite statistics. 
+                    'shots' parameter changes the statistics. Default is 0 (infinite statistics).
+                    If 'other' is used the function measures custom operators provided in the keyword arguments 'operators' and 'meas_ind'. Default is empty list of operators and None for meas_ind 
+                    (in this case whatever operator list the user inserts, the function measures all the possible qubits and combination of qubits for those operator).
+                    meas_ind parameter should be a list of lists, where each inner list contains the indices of qubits where the corresponding operator should be measured.
+        wo (int, optional): Wash out time for the reservoir. Defaults to 1000.
+        train_size (int, optional): Size of the training set. Defaults to 1000.
+        test_size (int, optional): Size of the test. Needed to test later on more testing windows
+        windows (int, optional): Number of testing windows. Default to 10. Needed at least 1.
+        rho (np.ndarray, optional): Initial state of the system. If Default the system is initialized to the Zero state.
+        disable_progress_bar (bool, optional): If True, disables the progress bar. Defaults to False.
+        kwargs: Additional keyword arguments for measurement modes.
+    
+    Returns:
+        ypred (np.ndarray): The predicted output for the test set.
+    """
+
+    Nq = int(np.log2(H0.shape[0]))
+    if len(np.shape(sk)) == 1:
+        sk = sk.reshape((len(sk),1))
+    
+    print('Evolution...')
+    xtrain, rhofs = CD_reservoir(sk, H_enc, H0, c_ops, dt, mode, wo, train_size, test_size, windows, rho, disable_progress_bar, **kwargs)
+
+    print('Training and testing...')
+    ypred = np.zeros((delay, windows, test_size, sk.shape[1]))
+    for i in range(1, delay + 1):
+        ytarget = sk[wo + i : wo + train_size + i]
+        ridge = CD_training(xtrain, ytarget)
+        ypred[i - 1] = CD_forecast_test(ridge, sk, rhofs, H_enc, H0, c_ops, dt, mode, wo, train_size, test_size, windows, delay, **kwargs)
+    print('Done.')
+    return ypred
+
+# =============================================================================
+#           TESTING TASKS
+# =============================================================================
+
+def CD_cooldown(rho: np.ndarray, H0: MatrixOrSparse, c_ops: list, cool: int, dt: float):
     '''Cools down the reservoir state by letting it evolve under free evolution for a certain number of steps.
      Args:
          rho (np.ndarray): Initial density matrix.
@@ -217,7 +326,7 @@ def CD_cooldown(rho: np.ndarray, H0: MatrixOrSparse, c_ops: list, cool: int, δt
     superd = csc_matrix(Super_D(c_ops), dtype = complex)
     superh = csc_matrix(Super_H(H0), dtype = complex)
     for _ in range(cool):
-        rho = Lindblad_Propagator(superh, superd, δt, rho)
+        rho = Lindblad_Propagator(superh, superd, dt, rho)
     return rho
 
 def CD_consistency_test(sk: MatrixLike, H1: MatrixOrSparse, H0: MatrixOrSparse, cops: list, dt: float, wo: int, train_size: int, cool: int):
@@ -244,7 +353,7 @@ def CD_consistency_test(sk: MatrixLike, H1: MatrixOrSparse, H0: MatrixOrSparse, 
     consistency = pearsonr(np.real(x1), np.real(x2))[0]**2
     return consistency
 
-def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, sqo: list, tqo: list, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 300):
+def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 300, rho: np.ndarray | None = None, disable_progress_bar: bool = False, **kwargs):
     '''Computes the short term memory capacity of a quantum reservoir computer using the CD evolution method.
     The short term memory task consists in testing the capacity of the reservoir to remember inputs after a certain delay tau.
     The function trains a ridge regression model to predict the input signal at time t - tau using the reservoir states at time t.
@@ -255,104 +364,46 @@ def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, 
         H0 (np.ndarray | csc_matrix | csc_array): Free Hamiltonian of the quantum reservoir.
         c_ops (list): List of collapse operators for the quantum reservoir.
         dt (float): Time step for the evolution.
-        sqo (list): List of single qubit operators for measurements.
-        tqo (list): List of two qubit operators for measurements.
-        operators (list | None, optional): List of custom measurement operators. If None, local
-        and two qubit measurements are used. Defaults to None.
-        meas_ind (list | None, optional): List of measurement indices for custom operators. If None,
-        all indices are used. Defaults to None. If an empty list is provided for an operator, all indices are used for that operator.
+        mode (str): Measurement mode. Can be 'local & correlations', 'probabilities', or 'other'. Default is 'local & correlations'. 
+                    If 'local & correlations' is used the function measures as default the local operators [σx, σy, σz] and the two qubit correlations [σx⊗σx, σy⊗σy, σz⊗σz]. 
+                    To change it local measurements and two qubit correlations operators use the keyword arguments 'sqo' and 'tqo' respectively.
+                    If 'probabilities' is used the function measures the state probabilities in the computational basis at infinite statistics. 
+                    'shots' parameter changes the statistics. Default is 0 (infinite statistics).
+                    If 'other' is used the function measures custom operators provided in the keyword arguments 'operators' and 'meas_ind'. Default is empty list of operators and None for meas_ind 
+                    (in this case whatever operator list the user inserts, the function measures all the possible qubits and combination of qubits for those operator).
+                    meas_ind parameter should be a list of lists, where each inner list contains the indices of qubits where the corresponding operator should be measured.
         wo (int, optional): Washout period to discard initial transient states. Defaults to 1000.
         train_size (int, optional): Size of the training dataset. Defaults to 1000
         test_size (int, optional): Size of the testing dataset. Defaults to 300.
+        rho (np.ndarray, optional): Initial state of the system. If Default the system is initialized to the Zero state.
+        disable_progress_bar (bool, optional): If True the progress bar is disabled. Defaults to False.
+        kwargs: Additional keyword arguments for measurement modes.
     Returns:
         np.ndarray: Array of memory capacities for delays from 0 to max_tau - 1.
     '''
     np.random.seed(seed = 42)
     sk = np.random.random((wo + train_size + test_size,1))
-    rhot = CD_evolution(sk, H_enc, H0, c_ops, dt, wo + train_size + test_size)
-    if meas_ind is not None or operators is not None:
-        if len(meas_ind) == 0:
-            meas_ind = [[] for i in range(len(operators))]
-        x_train = measure(rhot[wo : wo + train_size + test_size], operators, meas_ind)
-    else:
-        x = np.hstack((local_measurements(rhot[wo : wo + train_size + test_size], sqo), two_qubits_measurements(rhot[wo: wo + train_size + test_size], tqo)))
-        x = np.real(x)
+    windows = 1
+    x, _ = CD_reservoir(sk, H_enc, H0, c_ops, dt, mode, wo, train_size, test_size, windows, rho, disable_progress_bar, **kwargs)
+
     x_train = x[:train_size]
     x_test = x[train_size: train_size + test_size]
     ypred = np.zeros((max_tau, test_size))
     r = np.zeros((max_tau))
     for tau in range(max_tau):
         y_target = sk[wo - tau : wo + train_size - tau]
-        alpha = np.logspace(-9,3,1000)
-        ridge = LM.RidgeCV(alphas = alpha.tolist())
-        ridge.fit((x_train), y_target)
+        ridge = CD_training(x_train, y_target)
         ypred[tau] = ridge.predict(x_test).flatten()
 
         corr, _ = pearsonr(ypred[tau], sk[wo + train_size - tau : wo + train_size + test_size - tau,0])
         r[tau] = corr**2
     return r
 
-
-def Continuous_Dissipation_RC(sk: np.ndarray | list, y_target: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, operators: list | None = None, meas_ind: list | None = None, wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False):
-    """
-    Trains and tests a QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by 
-    Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291 . After the evolution of the system
-    a set of measurements is performed and the results are used to train a Ridge regression model. The model is than tested
-    on a number of testing windows. Thus:
-    X_i = Tr{rho(t)O_i}
-    and we train a linear model such that:
-    y_target_j = ∑_iW^{i,j}X_i + b_j
-    where y_target_j is j-th feature of the target output, W^{i,j} is the weight for the i-th measurement
-    operator and j-th target feature, and b_j is the bias for the j-th target feature.
-    Args:
-        sk (np.ndarray | list): The input signal to be encoded in the Hamiltonian.
-        y_target (np.ndarray | list): The target output for training.
-        H_enc (np.ndarray | sp.csc_matrix | sp.csc_array): The encoding Hamiltonian.
-        H0 (np.ndarray | sp.csc_matrix | sp.csc_array): The initial Hamiltonian.
-        c_ops (list): List of collapse operators for the system.
-        dt (float): Time step for the evolution.
-        operators (list | None): List of measurement operators.
-        meas_ind (list | None): Where the operators must be measured.
-        wo (int, optional): Wash out time for the reservoir. Defaults to 1000.
-        train_size (int, optional): Size of the training set. Defaults to 1000.
-        test_size (int, optional): Size of the test. Needed to test later on more testing windows. Defaults to 100.
-        windows (int, optional): Number of testing windows. Default to 10. Needed at least 1.
-        rho (np.ndarray, optional): Initial state of the system. If Default the system is initialized to the Zero state.
-        disable_progress_bar (bool, optional): If True the progress bar is disabled. Defaults to False.
-    Returns:
-        ridge (LM.RidgeCV): The trained Ridge regression model.
-        x_train (np.ndarray): The training data after measurement.
-        rhot (list): The final state of the system after evolution.
-        y_pred (np.ndarray): The predicted output for the test set.
-    """
-    Nq = int(np.log2(H0.shape[0]))
-    if rho is None:
-        rho = zero(dm = True, N = Nq)
-    else:
-        if np.False_ in is_state(rho):
-            raise ValueError("The provided initial state is not a valid density matrix.")
-    if len(np.shape(sk)) == 1:
-        sk = sk.reshape((len(sk),1))
-    if len(np.shape(H_enc)) == 2:
-        H_enc = np.array([H_enc])
-    y_target = np.array(y_target).reshape((train_size, np.shape(sk)[1]))
-
-    sk = np.array(sk)
-    rho = np.array(rho)
-    print('Training the QRC...')
-    ridge, xtrain, rhot = CD_training(sk, y_target, H_enc, H0, c_ops, dt, operators, meas_ind, wo, train_size, test_size, windows, rho, disable_progress_bar)
-
-    print('Testing the QRC...')
-    ypred = CD_forecast_test(ridge, sk, rhot, H_enc, H0, c_ops, dt, operators, meas_ind, test_size, windows)
-
-    return ridge, xtrain, rhot, ypred
-
-def echo_state_property(sk: np.ndarray, H_enc: MatrixOrSparse, H0: MatrixOrSparse, cops: list, dt: int, wo: int, disable_progress_bar = False):
+def CD_echo_state_property(sk: np.ndarray, H_enc: MatrixOrSparse, H0: MatrixOrSparse, cops: list, dt: int, wo: int, disable_progress_bar = False):
     """
     Verifies the washout time of the reservoir in the Continous Dissipation model.
 
     Args:
-    ----------
         sk : np.ndarray
             The input data.
         H1 : np.ndarray | sp.csc_array | sp.csc_matrix
@@ -367,7 +418,6 @@ def echo_state_property(sk: np.ndarray, H_enc: MatrixOrSparse, H0: MatrixOrSpars
             Wash out time test.
 
     Returns
-    -------
         td : np.ndarray
             The trace distance between two random initialization of the reservoir in time.
     """
