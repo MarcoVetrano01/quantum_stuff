@@ -1,5 +1,5 @@
 from .utils import is_herm, is_state, dag, is_norm, tensor_product, ptrace, ket_to_dm, nqubit, operator2vector, vector2operator
-from .Operators import sigmax, sigmay, sigmaz, sigmam, sigmap, local_operators, commutator, anticommutator, haar_random_unitary, measure, two_qubits_measurements, local_measurements, expect, hadamard, proj1, proj0, CNOT, pauli_basis
+from .Operators import sigmax, sigmay, sigmaz, sigmam, sigmap, local_operators, commutator, anticommutator, haar_random_unitary, measure, two_qubits_measurements, local_measurements, expect, hadamard, proj1, proj0, CNOT, pauli_basis, measure_vectors
 from .States import zero, one, plus, minus, right, left, random_qubit, BlochSpherePlot, bloch_vector, phi_minus, phi_plus, psi_minus, psi_plus
 from .Evolution import Lindblad_Propagator, Super_H, Super_D, dissipator, evolve_lindblad, evolve_unitary, Liouvillian, interaction, random_coupling, enforce_physical
 from .Metrics import fidelity, trace_distance, von_neumann_entropy, mutual_info, Holevo_Info, purity
@@ -9,9 +9,9 @@ __all__ = ["is_herm", "is_state", "dag", "is_norm", "tensor_product", "ptrace", 
            "sigmax", "sigmay", "sigmaz", "sigmam", "sigmap", "local_operators",
            "commutator", "anticommutator", "haar_random_unitary", "measure",
            "zero", "one", "plus", "minus", "right", "left", "random_qubit",
-           "BlochSpherePlot", "bloch_vector",
-           "Lindblad_Propagator", "Super_H", "Super_D", "dissipator",
-           "evolve_lindblad", "evolve_unitary", "Liouvillian",
-           "interaction", "random_coupling",
+           "BlochSpherePlot", "bloch_vector", "Lindblad_Propagator", "Super_H", 
+           "Super_D", "dissipator","evolve_lindblad", "evolve_unitary", "Liouvillian", "interaction", "random_coupling",
            "fidelity", "trace_distance", "von_neumann_entropy",
-           "mutual_info", "Holevo_Info", "purity", "nqubit" "operator2vector", "vector2operator", "local_measurements", "two_qubits_measurements", "expect", "hadamard", "proj1", "proj0", "CNOT", "enforce_physical", "phi_minus", "phi_plus", "psi_minus", "psi_plus","pauli_basis"]
+           "mutual_info", "Holevo_Info", "purity", "nqubit", "operator2vector", "vector2operator", "local_measurements", 
+           "two_qubits_measurements", "expect", "hadamard", "proj1", "proj0", "CNOT", "enforce_physical", "phi_minus", "phi_plus", 
+           "psi_minus", "psi_plus","pauli_basis", "measure_vectors"]

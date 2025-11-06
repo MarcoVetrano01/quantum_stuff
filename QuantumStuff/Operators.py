@@ -6,7 +6,7 @@ Functions are organized by functionality for better code navigation.
 """
 
 import numpy as np
-from .utils import is_state, tensor_product, ket_to_dm, ptrace, nqubit, dag, validate_matrix_types, MatrixLike, MatrixOrSparse, SparseLike
+from .utils import is_state, tensor_product, ket_to_dm, ptrace, nqubit, dag, validate_matrix_types, MatrixLike, MatrixOrSparse, SparseLike, operator2vector, vector2operator
 from itertools import combinations
 from scipy.special import comb
 from scipy.sparse import csc_array, kron, csc_matrix, dia_matrix
@@ -298,6 +298,66 @@ def measure(states: MatrixLike, operators: list, indices_list: list, batchmode: 
             all_measurements.append(exp_vals)
 
     return np.array(all_measurements).T
+
+def measure_vectors(states: MatrixLike, operators: MatrixLike) -> np.ndarray:
+    """
+    Measures operators on quantum states using the vectorized representation
+
+    Args:
+        states (MatrixLike): Quantum state or list of quantum states in vectorized representations. Shape should be (n_states, 4**n_qubits,1).
+        operators (MatrixLike): Operator or list of operators. Shape should be (n_operators, 4**n_qubits,1)
+
+    Returns:
+        np.ndarray: Measurement results with shape [n_states, n_operators].
+                   Each column represents measurement results for one operator.
+                   
+    Raises:
+        ValueError: If inputs are invalid quantum states or incompatible dimensions.
+    """
+    states = np.array(states, dtype = complex)
+    operators = np.array(operators, dtype = complex)
+    shape_states = np.shape(states)
+    shape_operators = np.shape(operators)
+
+    if len(shape_operators == 2):
+        is_square = shape_operators[0] == shape_operators[1]
+        if not is_square:
+            operators = operator2vector(operators)
+        operators = operators[np.newaxis]
+        nq_operators = int(np.sqrt((np.log2(shape_operators[1]))//2))
+
+    if len(shape_states) == 2:
+        is_square = shape_states[0] == shape_states[1]
+        if not is_square:
+            states = operator2vector(states)
+        states = states[np.newaxis]
+        nq_states = int(np.sqrt((np.log2(shape_states[1]))//2))
+
+    if len(shape_operators) == 3:
+        if shape_operators[1] == shape_operators[2]:
+            raise ValueError("Operators must be in vectorized form.")
+        else:
+            try:
+                operator_mat = vector2operator(operators[0])
+            except:
+                raise ValueError("Failed to convert operators to vectorized form. Be sure operators shape is (n_operators, 4**n_qubits, 1)")
+
+    if len(shape_states) == 3:
+        if shape_states[1] == shape_states[2]:
+            raise ValueError("Operators must be in vectorized form.")
+        else:
+            try:
+                state_mat = vector2operator(states[0])
+            except:
+                raise ValueError("Failed to convert states to vectorized form. Be sure states shape is (n_states, 4**n_qubits, 1)")
+
+    if nq_operators != nq_states:
+        raise ValueError("Operators and states must act on the same number of qubits.")
+    
+    operators = np.transpose(operators, (0,2,1)).conj()
+    all_measurements = operators.dot(states)[:,0,:,0]
+
+    return all_measurements
 
 def two_qubits_measurements(ρ: np.ndarray, operators: list) -> np.ndarray:
     """
