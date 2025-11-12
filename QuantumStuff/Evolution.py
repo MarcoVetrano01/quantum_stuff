@@ -204,6 +204,31 @@ def Liouvillian(t: float, state: MatrixLike, H: MatrixLike, c_ops: list):
     F += dissipator(state, c_ops)
     return F.ravel('F')
 
+def linear_chain(Js: float, sites: int, obc: bool = True):
+    """
+    Generate a linear chain coupling matrix for a system with `sites` number of sites.
+    The matrix has non-zero elements only for nearest neighbors.
+    Args:
+        Js (float): Coupling strength.
+        sites (int): Number of sites in the system.
+        obc (bool): If True, uses open boundary conditions, else it closes the chain
+    Returns:
+        np.ndarray: Linear chain coupling matrix of shape (sites, sites).
+    """
+
+    if not isinstance(Js, (int, float)):
+        raise TypeError("Js must be a number (int or float)")
+    if (not isinstance(sites, int)) or sites <= 0:
+        raise ValueError("sites must be a positive integer")
+    
+    J = np.zeros((sites, sites))
+    for i in range(sites - 1):
+        J[i, i + 1] = np.random.uniform(-Js, Js)
+    if not obc:
+        J[sites - 1, 0] = np.random.uniform(-Js, Js)
+    J = J + J.T
+    return J
+
 def random_coupling(Js: float, sites: int):
     """
     Generate a random coupling matrix for a system with `sites` number of sites.
