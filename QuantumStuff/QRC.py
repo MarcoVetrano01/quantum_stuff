@@ -144,7 +144,7 @@ def CD_reservoir(sk: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSpars
     
     elif mode == "probabilities":
         shots = params.get("shots")
-        x_train = np.real(np.linalg.diagonal(rhot[wo : wo + train_size + test_size]))
+        x_train = np.real(np.linalg.diagonal(rhot[wo : wo + train_size]))
         if shots != 0:
             x_train = np.array([np.random.multinomial(shots, x_train[i]) for i in range(len(x_train))]) / shots
     
