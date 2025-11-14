@@ -236,12 +236,14 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
                 sqo = params.get("sqo")
                 tqo = params.get("tqo")
                 x_test = np.real(np.hstack((local_measurements(rho, sqo, batchmode = False), two_qubits_measurements(rho, tqo))))
+                x_test = x_test.flatten()
             
             elif mode == "probabilities":
                 shots = params.get("shots")
                 x_test = np.real(np.linalg.diagonal(rho))
                 if shots != 0:
                     x_test = np.random.multinomial(shots, x_test) / shots
+                
             
             elif mode == "other":
                 operators = params.get("operators")
@@ -250,7 +252,7 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
                     meas_ind = [[] for i in range(len(operators))]
                 x_test = np.real(measure(rho, operators, meas_ind))
             
-            y_pred[j][i+delay] = ridge.predict(x_test[0].reshape(1, -1))
+            y_pred[j][i+delay] = ridge.predict(x_test.reshape(1, -1))
             for k in range(y_pred.shape[2]):
                 if y_pred[j][i+delay][k] < np.min(sk[:,k]):
                     y_pred[j][i+delay][k] = np.min(sk[:,k])
