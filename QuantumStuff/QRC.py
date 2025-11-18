@@ -356,7 +356,7 @@ def CD_consistency_test(sk: MatrixLike, H1: MatrixOrSparse, H0: MatrixOrSparse, 
     consistency = pearsonr(np.real(x1), np.real(x2))[0]**2
     return consistency
 
-def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 300, rho: np.ndarray | None = None, disable_progress_bar: bool = False, **kwargs):
+def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 300, rho: np.ndarray | None = None, disable_progress_bar: bool = False, alphas = np.logspace(-9,3,1000), regularize = False, **kwargs):
     '''Computes the short term memory capacity of a quantum reservoir computer using the CD evolution method.
     The short term memory task consists in testing the capacity of the reservoir to remember inputs after a certain delay tau.
     The function trains a ridge regression model to predict the input signal at time t - tau using the reservoir states at time t.
@@ -395,7 +395,7 @@ def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, 
     r = np.zeros((max_tau))
     for tau in range(max_tau):
         y_target = sk[wo - tau : wo + train_size - tau]
-        ridge = CD_training(x_train, y_target)
+        ridge = CD_training(x_train, y_target, alphas, regularize)
         ypred[tau] = ridge.predict(x_test).flatten()
 
         corr, _ = pearsonr(ypred[tau], sk[wo + train_size - tau : wo + train_size + test_size - tau,0])
