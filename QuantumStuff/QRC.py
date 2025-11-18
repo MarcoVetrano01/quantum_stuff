@@ -177,7 +177,7 @@ def CD_training(x_train: MatrixLike, y_target: MatrixLike, alpha: np.ndarray = n
         ridge.fit((x_train), y_target)
     return ridge
 
-def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, delay = 1, **kwargs):
+def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, delay = 1, disable_progress_bar = False, **kwargs):
     """
     Tests a trained QRC (Quantum Reservoir Computer) using the Continous Dissipation approach (CD) used by Sannia et Al. in https://doi.org/10.22331/q-2024-03-20-1291.
     After the evolution of the system a set of measurements is performed and the results are used to predict the next value of the input signal. The test is performed on multiple windows
@@ -222,7 +222,7 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
         for t in range(delay):
             y_pred[j][t] = sk[wo + train_size + j * test_size + t]
         
-        for i in tqdm(range(test_size-delay)):
+        for i in tqdm(range(test_size-delay), disable = disable_progress_bar):
             H = H0.copy()
             for k in range(len(H_enc)):
                 H += ((1+y_pred[j][i][k])*H_enc[k])
