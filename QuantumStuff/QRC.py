@@ -30,9 +30,7 @@ DEFAULTS: Dict[str, Dict[str, Any]] = {
 # =============================================================================
 # CONTINOUS DISSIPATION QRC FUNCTIONS
 #           FORECASTING TASK
-# =============================================================================
-
-
+# =============================================================================    
 
 def CD_evolution(sk: np.ndarray | list, H_enc: np.ndarray | csc_matrix | csc_array, H0: np.ndarray | csc_matrix | csc_array, c_ops: list, δt: float,  steps: int, state = None, disable_progress_bar = False, ignore = False):
     """
@@ -157,7 +155,7 @@ def CD_reservoir(sk: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSpars
 
     return x_train, [rhot[wo + train_size -1 + int(j*test_size)] for j in range(windows)]
 
-def CD_training(x_train, y_target: np.ndarray | list):
+def CD_training(x_train: MatrixLike, y_target: MatrixLike, alpha: np.ndarray = np.logspace(-9,3,1000), regularize: bool = True):
     """
     Train a Ridge regression model using the provided training data and target output.
     y_target_j = ∑_iW^{i,j}X_i + b_j
@@ -170,11 +168,13 @@ def CD_training(x_train, y_target: np.ndarray | list):
     Returns:
         ridge (LM.RidgeCV): The trained Ridge regression model.
     """
-
-    alpha = np.logspace(-9,3,1000)
-    ridge = LM.RidgeCV(alphas = alpha.tolist())
-    #For forecasting problems y_target = sk[wo+1:wo+train_size+1]
-    ridge.fit((x_train), y_target)
+    y_target = np.array(y_target)
+    if regularize:
+        ridge = LM.RidgeCV(alphas = alpha.tolist())
+        ridge.fit((x_train), y_target)
+    else:
+        ridge = LM.Ridge(alpha=0.0, solver = 'svd')
+        ridge.fit((x_train), y_target)
     return ridge
 
 def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, delay = 1, **kwargs):
@@ -260,7 +260,7 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
                     y_pred[j][i+delay][k] = np.max(sk[:,k])
     return y_pred
 
-def CD_Forecasting_RC(sk: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False, delay: int = 1, **kwargs):
+def CD_Forecasting_RC(sk: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 100, windows: int = 10, rho: np.ndarray | None = None, disable_progress_bar: bool = False, delay: int = 1, alphas: np.ndarray = np.logspace(-9,3,1000), regularize: bool = True, **kwargs):
     """
     Wrapper function that trains and tests a Quantum Reservoir Computer (QRC) using the Continous Dissipation approach (CD) as implemented in 
     https://doi.org/10.22331/q-2024-03-20-1291 for forecasting tasks.
@@ -287,13 +287,14 @@ def CD_Forecasting_RC(sk: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOr
         windows (int, optional): Number of testing windows. Default to 10. Needed at least 1.
         rho (np.ndarray, optional): Initial state of the system. If Default the system is initialized to the Zero state.
         disable_progress_bar (bool, optional): If True, disables the progress bar. Defaults to False.
+        alphas (np.ndarray, optional): Array of alpha values for Ridge regression. Defaults to np.logspace(-9,3,1000).
+        regularize (bool, optional): If True, uses regularization in the Ridge regression. Defaults to True.
         kwargs: Additional keyword arguments for measurement modes.
     
     Returns:
         ypred (np.ndarray): The predicted output for the test set.
     """
 
-    Nq = int(np.log2(H0.shape[0]))
     if len(np.shape(sk)) == 1:
         sk = sk.reshape((len(sk),1))
     
@@ -304,7 +305,7 @@ def CD_Forecasting_RC(sk: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOr
     ypred = np.zeros((delay, windows, test_size, sk.shape[1]))
     for i in range(1, delay + 1):
         ytarget = sk[wo + i : wo + train_size + i]
-        ridge = CD_training(xtrain, ytarget)
+        ridge = CD_training(xtrain, ytarget, alphas, regularize)
         ypred[i - 1] = CD_forecast_test(ridge, sk, rhofs, H_enc, H0, c_ops, dt, mode, wo, train_size, test_size, windows, delay, **kwargs)
     print('Done.')
     return ypred
