@@ -308,7 +308,7 @@ def CD_Forecasting_RC(sk: np.ndarray | list, H_enc: MatrixOrSparse, H0: MatrixOr
         ridge = CD_training(xtrain, ytarget, alphas, regularize)
         ypred[i - 1] = CD_forecast_test(ridge, sk, rhofs, H_enc, H0, c_ops, dt, mode, wo, train_size, test_size, windows, delay, **kwargs)
     print('Done.')
-    return ypred
+    return ypred, xtrain
 
 # =============================================================================
 #           TESTING TASKS
