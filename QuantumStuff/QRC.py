@@ -387,7 +387,7 @@ def CD_ShortTermMemory(max_tau: int, H_enc: MatrixLike, H0: MatrixOrSparse, c_op
     if not isinstance(H_enc, list):
         H_enc = [H_enc]
     np.random.seed(seed = 42)
-    sk = np.random.random((wo + train_size + test_size,1))
+    sk = np.random.random((wo + train_size + test_size,len(H_enc)))
     windows = 0
     x, _ = CD_reservoir(sk, H_enc, H0, c_ops, dt, mode, wo, train_size + test_size, 0, windows, rho, disable_progress_bar, **kwargs)
 
@@ -398,9 +398,9 @@ def CD_ShortTermMemory(max_tau: int, H_enc: MatrixLike, H0: MatrixOrSparse, c_op
     for tau in range(max_tau):
         y_target = sk[wo - tau : wo + train_size - tau]
         ridge = CD_training(x_train, y_target, alphas, regularize)
-        ypred[tau] = ridge.predict(x_test)
+        ypred[tau] = ridge.predict(x_test).reshape((test_size, len(H_enc)))
 
-        corr, _ = [pearsonr(ypred[tau,:,i], sk[wo + train_size - tau : wo + train_size + test_size - tau,i]) for i in range(len(H_enc))]
+        corr = np.array([pearsonr(ypred[tau,:,i], sk[wo + train_size - tau : wo + train_size + test_size - tau,i])[0] for i in range(len(H_enc))])
         r[tau] = corr**2
     return r
 
