@@ -356,7 +356,7 @@ def CD_consistency_test(sk: MatrixLike, H1: MatrixOrSparse, H0: MatrixOrSparse, 
     consistency = pearsonr(np.real(x1), np.real(x2))[0]**2
     return consistency
 
-def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 300, rho: np.ndarray | None = None, disable_progress_bar: bool = False, alphas = np.logspace(-9,3,1000), regularize = False, **kwargs):
+def CD_ShortTermMemory(max_tau: int, H_enc: MatrixLike, H0: MatrixOrSparse, c_ops: list, dt: float, mode: str = 'local & correlations', wo: int = 1000, train_size: int = 1000, test_size: int = 300, rho: np.ndarray | None = None, disable_progress_bar: bool = False, alphas = np.logspace(-9,3,1000), regularize = False, **kwargs):
     '''Computes the short term memory capacity of a quantum reservoir computer using the CD evolution method.
     The short term memory task consists in testing the capacity of the reservoir to remember inputs after a certain delay tau.
     The function trains a ridge regression model to predict the input signal at time t - tau using the reservoir states at time t.
@@ -384,10 +384,12 @@ def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, 
     Returns:
         np.ndarray: Array of memory capacities for delays from 0 to max_tau - 1.
     '''
+    if not isinstance(H_enc, list):
+        H_enc = [H_enc]
     np.random.seed(seed = 42)
     sk = np.random.random((wo + train_size + test_size,1))
-    windows = 1
-    x, _ = CD_reservoir(sk, H_enc, H0, c_ops, dt, mode, wo, train_size, test_size, windows, rho, disable_progress_bar, **kwargs)
+    windows = 0
+    x, _ = CD_reservoir(sk, H_enc, H0, c_ops, dt, mode, wo, train_size + test_size, 0, windows, rho, disable_progress_bar, **kwargs)
 
     x_train = x[:train_size]
     x_test = x[train_size: train_size + test_size]
@@ -398,7 +400,7 @@ def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, 
         ridge = CD_training(x_train, y_target, alphas, regularize)
         ypred[tau] = ridge.predict(x_test)
 
-        corr, _ = [pearsonr(ypred[tau,:,0], sk[wo + train_size - tau : wo + train_size + test_size - tau,i]) for i in range(len(H_enc))]
+        corr, _ = [pearsonr(ypred[tau,:,i], sk[wo + train_size - tau : wo + train_size + test_size - tau,i]) for i in range(len(H_enc))]
         r[tau] = corr**2
     return r
 
