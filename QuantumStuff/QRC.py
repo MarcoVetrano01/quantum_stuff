@@ -391,14 +391,14 @@ def CD_ShortTermMemory(max_tau: int, H_enc: MatrixOrSparse, H0: MatrixOrSparse, 
 
     x_train = x[:train_size]
     x_test = x[train_size: train_size + test_size]
-    ypred = np.zeros((max_tau, test_size))
-    r = np.zeros((max_tau))
+    ypred = np.zeros((max_tau, test_size, len(H_enc)))
+    r = np.zeros((max_tau,len(H_enc)))
     for tau in range(max_tau):
         y_target = sk[wo - tau : wo + train_size - tau]
         ridge = CD_training(x_train, y_target, alphas, regularize)
-        ypred[tau] = ridge.predict(x_test).flatten()
+        ypred[tau] = ridge.predict(x_test)
 
-        corr, _ = pearsonr(ypred[tau], sk[wo + train_size - tau : wo + train_size + test_size - tau,0])
+        corr, _ = [pearsonr(ypred[tau,:,0], sk[wo + train_size - tau : wo + train_size + test_size - tau,i]) for i in range(len(H_enc))]
         r[tau] = corr**2
     return r
 
