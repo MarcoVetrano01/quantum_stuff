@@ -250,7 +250,7 @@ def CD_forecast_test(ridge: LM.Ridge, sk: np.ndarray, rhof: np.ndarray | list, H
                 meas_ind = params.get("meas_ind")
                 if len(meas_ind) == 0:
                     meas_ind = [[] for i in range(len(operators))]
-                x_test = np.real(measure(rho, operators, meas_ind))
+                x_test = np.real(measure(rho, operators, meas_ind, batchmode = False))
             
             y_pred[j][i+delay] = ridge.predict(x_test.reshape(1, -1))
             for k in range(y_pred.shape[2]):
